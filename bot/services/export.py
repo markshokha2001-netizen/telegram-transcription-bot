@@ -126,6 +126,24 @@ class Exporter:
         # Контейнер для элементов
         story = []
 
+        # Регистрируем Unicode шрифт прямо здесь
+        try:
+            from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+            from reportlab.pdfbase import pdfmetrics
+            pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
+            font_name = 'HeiseiMin-W3'
+        except:
+            try:
+                # Пробуем DejaVu Sans из файла
+                font_path = Path(__file__).parent.parent.parent / "fonts" / "DejaVuSans.ttf"
+                if font_path.exists():
+                    pdfmetrics.registerFont(TTFont('DejaVuSans', str(font_path)))
+                    font_name = 'DejaVuSans'
+                else:
+                    font_name = 'Helvetica'
+            except:
+                font_name = 'Helvetica'
+
         # Стили
         styles = getSampleStyleSheet()
 
@@ -133,7 +151,7 @@ class Exporter:
         style_normal = ParagraphStyle(
             'CustomNormal',
             parent=styles['Normal'],
-            fontName=self.pdf_font,
+            fontName=font_name,
             fontSize=12,
             leading=18,
             alignment=TA_JUSTIFY,
@@ -142,7 +160,7 @@ class Exporter:
         style_heading = ParagraphStyle(
             'CustomHeading',
             parent=styles['Heading1'],
-            fontName=self.pdf_font,
+            fontName=font_name,
             fontSize=16,
             leading=22,
         )
@@ -150,7 +168,7 @@ class Exporter:
         style_date = ParagraphStyle(
             'CustomDate',
             parent=styles['Normal'],
-            fontName=self.pdf_font,
+            fontName=font_name,
             fontSize=10,
             leading=14,
         )
@@ -169,6 +187,8 @@ class Exporter:
         paragraphs = text.split('\n\n')
         for para_text in paragraphs:
             if para_text.strip():
+                # Экранируем специальные символы для XML
+                para_text = para_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 story.append(Paragraph(para_text.replace('\n', '<br/>'), style_normal))
                 story.append(Spacer(1, 12))
 
