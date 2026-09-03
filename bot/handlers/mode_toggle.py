@@ -284,11 +284,14 @@ async def handle_export_summary_pdf(callback: CallbackQuery):
 # Экспорт исправленных текстов
 
 @router.callback_query(F.data.startswith("export_fixed_txt_"))
+async def handle_export_fixed_txt(callback: CallbackQuery):
+    """Обработка экспорта исправленного текста в TXT"""
+    await callback.answer()
 
     message_id = int(callback.data.split("_")[3])
 
-    if message_id not in summaries:
-        await callback.message.answer("❌ Конспект не найден. Возможно, бот был перезапущен.")
+    if message_id not in fixed_texts:
+        await callback.message.answer("❌ Исправленный текст не найден. Возможно, бот был перезапущен.")
         return
 
     try:
