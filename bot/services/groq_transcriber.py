@@ -8,7 +8,7 @@ class GroqTranscriber:
     """Транскрибация через Groq API (Whisper Large v3, бесплатно)"""
 
     def __init__(self):
-        self.client = AsyncGroq(api_key=GROQ_API_KEY)
+        self.client = AsyncGroq(api_key=GROQ_API_KEY, timeout=120.0)  # 2 минуты timeout
 
     async def transcribe_verbatim(self, audio_path: str) -> str:
         """
@@ -16,17 +16,21 @@ class GroqTranscriber:
         Использует Whisper Large v3 Turbo (быстрая модель).
         """
         try:
-            with open(audio_path, "rb") as audio_file:
-                transcription = await self.client.audio.transcriptions.create(
-                    file=audio_file,
-                    model="whisper-large-v3-turbo",
-                    language="ru",
-                    response_format="verbose_json",
-                    temperature=0.0
-                )
+            # Добавляем timeout на весь процесс транскрибации
+            async with asyncio.timeout(180):  # 3 минуты максимум
+                with open(audio_path, "rb") as audio_file:
+                    transcription = await self.client.audio.transcriptions.create(
+                        file=audio_file,
+                        model="whisper-large-v3-turbo",
+                        language="ru",
+                        response_format="verbose_json",
+                        temperature=0.0
+                    )
 
-            return transcription.text.strip()
+                return transcription.text.strip()
 
+        except asyncio.TimeoutError:
+            raise RuntimeError(f"Превышен timeout транскрибации (3 минуты). Попробуйте файл поменьше или проверьте подключение к интернету.")
         except Exception as e:
             raise RuntimeError(f"Ошибка транскрибации через Groq: {str(e)}")
 
