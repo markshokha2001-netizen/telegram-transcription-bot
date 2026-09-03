@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pathlib import Path
 from docx import Document
 from docx.shared import Pt, Inches
 from reportlab.lib.pagesizes import A4
@@ -16,6 +17,18 @@ class Exporter:
     def __init__(self):
         self.exports_dir = "exports"
         os.makedirs(self.exports_dir, exist_ok=True)
+
+        # Регистрируем шрифт DejaVu Sans для поддержки кириллицы в PDF
+        try:
+            font_path = Path(__file__).parent.parent.parent / "fonts" / "DejaVuSans.ttf"
+            if font_path.exists():
+                pdfmetrics.registerFont(TTFont('DejaVuSans', str(font_path)))
+                self.pdf_font = 'DejaVuSans'
+            else:
+                self.pdf_font = 'Helvetica'  # Fallback
+        except Exception as e:
+            print(f"Не удалось загрузить шрифт DejaVu Sans: {e}")
+            self.pdf_font = 'Helvetica'
 
     def export_to_txt(self, text: str, filename: str = None) -> str:
         """
@@ -113,6 +126,7 @@ class Exporter:
         style_normal = ParagraphStyle(
             'CustomNormal',
             parent=styles['Normal'],
+            fontName=self.pdf_font,
             fontSize=12,
             leading=18,
             alignment=TA_JUSTIFY,
@@ -121,6 +135,7 @@ class Exporter:
         style_heading = ParagraphStyle(
             'CustomHeading',
             parent=styles['Heading1'],
+            fontName=self.pdf_font,
             fontSize=16,
             leading=22,
         )
@@ -128,9 +143,9 @@ class Exporter:
         style_date = ParagraphStyle(
             'CustomDate',
             parent=styles['Normal'],
+            fontName=self.pdf_font,
             fontSize=10,
             leading=14,
-            fontName='Times-Italic',
         )
 
         # Добавляем заголовок
