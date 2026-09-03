@@ -11,8 +11,9 @@ summarizer = Summarizer()
 downloader = Downloader()
 exporter = Exporter()
 
-# Хранилище для конспектов
+# Хранилище для конспектов и исправленных текстов
 summaries = {}
+fixed_texts = {}
 
 
 @router.callback_query(F.data.startswith("summary_"))
@@ -48,6 +49,41 @@ async def handle_summary_request(callback: CallbackQuery):
 
     except Exception as e:
         await callback.message.answer(f"❌ Ошибка при создании конспекта: {str(e)}")
+
+
+@router.callback_query(F.data.startswith("ai_fix_"))
+async def handle_ai_fix_request(callback: CallbackQuery):
+    """Обработка нажатия кнопки 'AI-исправление'"""
+    await callback.answer()
+
+    message_id = int(callback.data.split("_")[2])
+
+    if message_id not in transcripts:
+        await callback.message.answer("❌ Транскрипт не найден. Возможно, бот был перезапущен.")
+        return
+
+    status_msg = await callback.message.answer("✨ Исправляю текст...")
+
+    try:
+        transcript = transcripts[message_id]
+        fixed_text = await summarizer.fix_transcript(transcript)
+
+        # Сохраняем исправленный текст для возможности экспорта
+        fixed_texts[message_id] = fixed_text
+
+        # Кнопки для экспорта исправленного текста
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📄 TXT", callback_data=f"export_fixed_txt_{message_id}"),
+                InlineKeyboardButton(text="📘 DOCX", callback_data=f"export_fixed_docx_{message_id}"),
+                InlineKeyboardButton(text="📕 PDF", callback_data=f"export_fixed_pdf_{message_id}")
+            ]
+        ])
+
+        await callback.message.answer(f"✨ Исправленный текст:\n\n{fixed_text}", reply_markup=keyboard)
+
+    except Exception as e:
+        await callback.message.answer(f"❌ Ошибка при исправлении текста: {str(e)}")
 
 
 @router.callback_query(F.data.startswith("audio_"))
@@ -220,6 +256,80 @@ async def handle_export_summary_pdf(callback: CallbackQuery):
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📕 Конспект в формате PDF")
+
+        downloader.cleanup(filepath)
+
+    except Exception as e:
+        await callback.message.answer(f"❌ Ошибка при экспорте: {str(e)}")
+
+
+# Экспорт исправленных текстов
+
+@router.callback_query(F.data.startswith("export_fixed_txt_"))
+async def handle_export_fixed_txt(callback: CallbackQuery):
+    """Обработка экспорта исправленного текста в TXT"""
+    await callback.answer()
+
+    message_id = int(callback.data.split("_")[3])
+
+    if message_id not in fixed_texts:
+        await callback.message.answer("❌ Исправленный текст не найден. Возможно, бот был перезапущен.")
+        return
+
+    try:
+        fixed_text = fixed_texts[message_id]
+        filepath = exporter.export_to_txt(fixed_text)
+
+        file = FSInputFile(filepath)
+        await callback.message.answer_document(file, caption="📄 Исправленный текст в формате TXT")
+
+        downloader.cleanup(filepath)
+
+    except Exception as e:
+        await callback.message.answer(f"❌ Ошибка при экспорте: {str(e)}")
+
+
+@router.callback_query(F.data.startswith("export_fixed_docx_"))
+async def handle_export_fixed_docx(callback: CallbackQuery):
+    """Обработка экспорта исправленного текста в DOCX"""
+    await callback.answer()
+
+    message_id = int(callback.data.split("_")[3])
+
+    if message_id not in fixed_texts:
+        await callback.message.answer("❌ Исправленный текст не найден. Возможно, бот был перезапущен.")
+        return
+
+    try:
+        fixed_text = fixed_texts[message_id]
+        filepath = exporter.export_to_docx(fixed_text)
+
+        file = FSInputFile(filepath)
+        await callback.message.answer_document(file, caption="📘 Исправленный текст в формате DOCX")
+
+        downloader.cleanup(filepath)
+
+    except Exception as e:
+        await callback.message.answer(f"❌ Ошибка при экспорте: {str(e)}")
+
+
+@router.callback_query(F.data.startswith("export_fixed_pdf_"))
+async def handle_export_fixed_pdf(callback: CallbackQuery):
+    """Обработка экспорта исправленного текста в PDF"""
+    await callback.answer()
+
+    message_id = int(callback.data.split("_")[3])
+
+    if message_id not in fixed_texts:
+        await callback.message.answer("❌ Исправленный текст не найден. Возможно, бот был перезапущен.")
+        return
+
+    try:
+        fixed_text = fixed_texts[message_id]
+        filepath = exporter.export_to_pdf(fixed_text)
+
+        file = FSInputFile(filepath)
+        await callback.message.answer_document(file, caption="📕 Исправленный текст в формате PDF")
 
         downloader.cleanup(filepath)
 
