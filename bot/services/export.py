@@ -17,6 +17,15 @@ class Exporter:
         self.exports_dir = "exports"
         os.makedirs(self.exports_dir, exist_ok=True)
 
+        # Регистрируем шрифт с поддержкой кириллицы
+        try:
+            from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+            pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
+            self.cyrillic_font = 'HeiseiMin-W3'
+        except:
+            # Fallback на встроенный шрифт Helvetica (без кириллицы, но не крашится)
+            self.cyrillic_font = 'Helvetica'
+
     def export_to_txt(self, text: str, filename: str = None) -> str:
         """
         Экспорт в TXT файл
@@ -113,6 +122,7 @@ class Exporter:
         style_normal = ParagraphStyle(
             'CustomNormal',
             parent=styles['Normal'],
+            fontName=self.cyrillic_font,
             fontSize=12,
             leading=18,
             alignment=TA_JUSTIFY,
@@ -121,6 +131,7 @@ class Exporter:
         style_heading = ParagraphStyle(
             'CustomHeading',
             parent=styles['Heading1'],
+            fontName=self.cyrillic_font,
             fontSize=16,
             leading=22,
         )
@@ -128,9 +139,9 @@ class Exporter:
         style_date = ParagraphStyle(
             'CustomDate',
             parent=styles['Normal'],
+            fontName=self.cyrillic_font,
             fontSize=10,
             leading=14,
-            fontName='Times-Italic',
         )
 
         # Добавляем заголовок
