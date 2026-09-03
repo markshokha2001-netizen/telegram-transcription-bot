@@ -278,9 +278,12 @@ async def handle_export_summary_pdf(callback: CallbackQuery):
         downloader.cleanup(filepath)
 
     except Exception as e:
-async def handle_export_summary_pdf(callback: CallbackQuery):
-    """Обработка экспорта конспекта в PDF"""
-    await callback.answer()
+        await callback.message.answer(f"❌ Ошибка при экспорте: {str(e)}")
+
+
+# Экспорт исправленных текстов
+
+@router.callback_query(F.data.startswith("export_fixed_txt_"))
 
     message_id = int(callback.data.split("_")[3])
 
