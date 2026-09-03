@@ -29,18 +29,26 @@ async def handle_link(message: Message):
     if not match:
         return
 
-    await message.answer("Принял, обрабатываю...")
+    status_msg = await message.answer("Принял, обрабатываю...")
 
     try:
+        print(f"[YouTube] Начинаем скачивание: {message.text}")
+        await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube...")
+
         audio_path = await downloader.download_audio_from_url(message.text)
 
         if not audio_path:
             raise RuntimeError("Не удалось скачать аудио")
 
+        print(f"[YouTube] Аудио скачано: {audio_path}")
         audio_files[message.message_id] = audio_path
+
+        await status_msg.edit_text("🎤 Транскрибирую...")
+        print(f"[YouTube] Начинаем транскрибацию: {audio_path}")
 
         transcript = await transcriber.transcribe_verbatim(audio_path)
 
+        print(f"[YouTube] Транскрибация завершена, длина текста: {len(transcript)}")
         transcripts[message.message_id] = transcript
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -51,6 +59,9 @@ async def handle_link(message: Message):
         await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
 
     except Exception as e:
+        print(f"[YouTube] Ошибка: {str(e)}")
+        import traceback
+        traceback.print_exc()
         await message.answer(f"❌ Ошибка при скачивании или обработке: {str(e)}")
         if 'audio_path' in locals() and audio_path:
             downloader.cleanup(audio_path)

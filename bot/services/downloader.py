@@ -27,24 +27,28 @@ class Downloader:
         ]
 
         try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            # Добавляем timeout на скачивание (2 минуты максимум)
+            async with asyncio.timeout(120):
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
 
-            stdout, stderr = await process.communicate()
+                stdout, stderr = await process.communicate()
 
-            if process.returncode != 0:
-                error_msg = stderr.decode()
-                raise RuntimeError(f"yt-dlp завершился с ошибкой: {error_msg}")
+                if process.returncode != 0:
+                    error_msg = stderr.decode()
+                    raise RuntimeError(f"yt-dlp завершился с ошибкой: {error_msg}")
 
-            for file in self.download_dir.glob("*.*"):
-                if file.suffix in [".mp3", ".m4a", ".wav", ".ogg"]:
-                    return str(file)
+                for file in self.download_dir.glob("*.*"):
+                    if file.suffix in [".mp3", ".m4a", ".wav", ".ogg"]:
+                        return str(file)
 
-            return None
+                return None
 
+        except asyncio.TimeoutError:
+            raise RuntimeError(f"Превышен timeout скачивания (2 минуты). Попробуйте другое видео или проверьте подключение.")
         except Exception as e:
             raise RuntimeError(f"Ошибка при скачивании: {str(e)}")
 
