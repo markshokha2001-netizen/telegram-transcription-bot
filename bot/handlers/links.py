@@ -3,15 +3,13 @@ import re
 from aiogram import Router, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from bot.services.downloader import Downloader
-from bot.services.transcriber import Transcriber
 from bot.services.groq_transcriber import GroqTranscriber
 from bot.handlers.media import transcripts, audio_files
-from bot.config import USE_GROQ
 
 router = Router()
 downloader = Downloader()
-# Используем Groq (быстро, онлайн) или локальную модель (медленно, оффлайн)
-transcriber = GroqTranscriber() if USE_GROQ else Transcriber()
+# Используем только Groq для деплоя (быстро, онлайн)
+transcriber = GroqTranscriber()
 
 URL_REGEX = re.compile(
     r'(https?://)?(www\.)?(youtube\.com|youtu\.be|m\.youtube\.com)/'

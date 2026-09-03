@@ -4,17 +4,15 @@ from pathlib import Path
 from aiogram import Router, F
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from bot.services.downloader import Downloader
-from bot.services.transcriber import Transcriber
 from bot.services.groq_transcriber import GroqTranscriber
 from bot.services.export import Exporter
-from bot.config import USE_GROQ
 
 router = Router()
 downloader = Downloader()
 exporter = Exporter()
 
-# Используем Groq (быстро, онлайн) или локальную модель (медленно, оффлайн)
-transcriber = GroqTranscriber() if USE_GROQ else Transcriber()
+# Используем только Groq для деплоя (быстро, онлайн)
+transcriber = GroqTranscriber()
 
 # Хранилище для связи между транскриптами и исходными файлами
 transcripts = {}
