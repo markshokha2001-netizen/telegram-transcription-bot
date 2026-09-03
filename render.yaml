@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: telegram-transcription-bot
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: USE_GROQ
+        value: true
+      - key: USE_LOCAL_API
+        value: false
