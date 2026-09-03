@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, Inli
 from bot.services.summarizer import Summarizer
 from bot.services.downloader import Downloader
 from bot.services.export import Exporter
-from bot.handlers.media import transcripts, audio_files
+from bot.handlers.media import transcripts, audio_files, file_names
 
 router = Router()
 summarizer = Summarizer()
@@ -127,7 +127,10 @@ async def handle_export_txt(callback: CallbackQuery):
 
     try:
         transcript = transcripts[message_id]
-        filepath = exporter.export_to_txt(transcript)
+        # Получаем имя исходного файла
+        original_name = file_names.get(message_id, "transcript")
+        filename = f"{original_name}.txt"
+        filepath = exporter.export_to_txt(transcript, filename)
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📄 Транскрипт в формате TXT")
@@ -152,7 +155,10 @@ async def handle_export_docx(callback: CallbackQuery):
 
     try:
         transcript = transcripts[message_id]
-        filepath = exporter.export_to_docx(transcript)
+        # Получаем имя исходного файла
+        original_name = file_names.get(message_id, "transcript")
+        filename = f"{original_name}.docx"
+        filepath = exporter.export_to_docx(transcript, filename)
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📘 Транскрипт в формате DOCX")
@@ -177,7 +183,10 @@ async def handle_export_pdf(callback: CallbackQuery):
 
     try:
         transcript = transcripts[message_id]
-        filepath = exporter.export_to_pdf(transcript)
+        # Получаем имя исходного файла
+        original_name = file_names.get(message_id, "transcript")
+        filename = f"{original_name}.pdf"
+        filepath = exporter.export_to_pdf(transcript, filename)
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📕 Транскрипт в формате PDF")
@@ -204,7 +213,10 @@ async def handle_export_summary_txt(callback: CallbackQuery):
 
     try:
         summary = summaries[message_id]
-        filepath = exporter.export_to_txt(summary)
+        # Получаем имя исходного файла и добавляем суффикс
+        original_name = file_names.get(message_id, "transcript")
+        filename = f"{original_name}_summary.txt"
+        filepath = exporter.export_to_txt(summary, filename)
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📄 Конспект в формате TXT")
@@ -228,7 +240,10 @@ async def handle_export_summary_docx(callback: CallbackQuery):
 
     try:
         summary = summaries[message_id]
-        filepath = exporter.export_to_docx(summary)
+        # Получаем имя исходного файла и добавляем суффикс
+        original_name = file_names.get(message_id, "transcript")
+        filename = f"{original_name}_summary.docx"
+        filepath = exporter.export_to_docx(summary, filename)
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📘 Конспект в формате DOCX")
@@ -240,6 +255,29 @@ async def handle_export_summary_docx(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("export_summary_pdf_"))
+async def handle_export_summary_pdf(callback: CallbackQuery):
+    """Обработка экспорта конспекта в PDF"""
+    await callback.answer()
+
+    message_id = int(callback.data.split("_")[3])
+
+    if message_id not in summaries:
+        await callback.message.answer("❌ Конспект не найден. Возможно, бот был перезапущен.")
+        return
+
+    try:
+        summary = summaries[message_id]
+        # Получаем имя исходного файла и добавляем суффикс
+        original_name = file_names.get(message_id, "transcript")
+        filename = f"{original_name}_summary.pdf"
+        filepath = exporter.export_to_pdf(summary, filename)
+
+        file = FSInputFile(filepath)
+        await callback.message.answer_document(file, caption="📕 Конспект в формате PDF")
+
+        downloader.cleanup(filepath)
+
+    except Exception as e:
 async def handle_export_summary_pdf(callback: CallbackQuery):
     """Обработка экспорта конспекта в PDF"""
     await callback.answer()
@@ -278,7 +316,10 @@ async def handle_export_fixed_txt(callback: CallbackQuery):
 
     try:
         fixed_text = fixed_texts[message_id]
-        filepath = exporter.export_to_txt(fixed_text)
+        # Получаем имя исходного файла и добавляем суффикс
+        original_name = file_names.get(message_id, "transcript")
+        filename = f"{original_name}_fixed.txt"
+        filepath = exporter.export_to_txt(fixed_text, filename)
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📄 Исправленный текст в формате TXT")
@@ -302,7 +343,10 @@ async def handle_export_fixed_docx(callback: CallbackQuery):
 
     try:
         fixed_text = fixed_texts[message_id]
-        filepath = exporter.export_to_docx(fixed_text)
+        # Получаем имя исходного файла и добавляем суффикс
+        original_name = file_names.get(message_id, "transcript")
+        filename = f"{original_name}_fixed.docx"
+        filepath = exporter.export_to_docx(fixed_text, filename)
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📘 Исправленный текст в формате DOCX")
@@ -326,7 +370,10 @@ async def handle_export_fixed_pdf(callback: CallbackQuery):
 
     try:
         fixed_text = fixed_texts[message_id]
-        filepath = exporter.export_to_pdf(fixed_text)
+        # Получаем имя исходного файла и добавляем суффикс
+        original_name = file_names.get(message_id, "transcript")
+        filename = f"{original_name}_fixed.pdf"
+        filepath = exporter.export_to_pdf(fixed_text, filename)
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📕 Исправленный текст в формате PDF")

@@ -17,6 +17,7 @@ transcriber = GroqTranscriber()
 # Хранилище для связи между транскриптами и исходными файлами
 transcripts = {}
 audio_files = {}
+file_names = {}  # Хранилище для имён исходных файлов
 
 # Стандартный лимит Telegram Bot API
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 МБ
@@ -58,6 +59,7 @@ async def handle_voice(message: Message):
         transcript = await transcriber.transcribe_verbatim(file_path)
 
         transcripts[message.message_id] = transcript
+        file_names[message.message_id] = "voice_message"  # Голосовые сообщения не имеют имени
 
         keyboard = get_export_keyboard(message.message_id)
 
@@ -112,6 +114,9 @@ async def handle_audio(message: Message):
         transcript = await transcriber.transcribe_verbatim(file_path)
 
         transcripts[message.message_id] = transcript
+        # Сохраняем имя файла без расширения
+        original_name = Path(message.audio.file_name or "audio").stem
+        file_names[message.message_id] = original_name
 
         keyboard = get_export_keyboard(message.message_id)
 
@@ -176,6 +181,9 @@ async def handle_video(message: Message):
         transcript = await transcriber.transcribe_verbatim(audio_path)
 
         transcripts[message.message_id] = transcript
+        # Сохраняем имя видеофайла без расширения
+        original_name = Path(message.video.file_name or "video").stem if message.video.file_name else "video"
+        file_names[message.message_id] = original_name
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
