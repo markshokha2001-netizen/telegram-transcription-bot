@@ -15,19 +15,20 @@ class GroqTranscriber:
         Транскрибирует аудио через Groq API.
         Использует Whisper Large v3 Turbo (быстрая модель).
         """
-        try:
-            # Добавляем timeout на весь процесс транскрибации
-            async with asyncio.timeout(180):  # 3 минуты максимум
-                with open(audio_path, "rb") as audio_file:
-                    transcription = await self.client.audio.transcriptions.create(
-                        file=audio_file,
-                        model="whisper-large-v3-turbo",
-                        language="ru",
-                        response_format="verbose_json",
-                        temperature=0.0
-                    )
+        async def _transcribe():
+            with open(audio_path, "rb") as audio_file:
+                transcription = await self.client.audio.transcriptions.create(
+                    file=audio_file,
+                    model="whisper-large-v3-turbo",
+                    language="ru",
+                    response_format="verbose_json",
+                    temperature=0.0
+                )
+            return transcription.text.strip()
 
-                return transcription.text.strip()
+        try:
+            # Используем wait_for для надёжного timeout (3 минуты максимум)
+            return await asyncio.wait_for(_transcribe(), timeout=180.0)
 
         except asyncio.TimeoutError:
             raise RuntimeError(f"Превышен timeout транскрибации (3 минуты). Попробуйте файл поменьше или проверьте подключение к интернету.")
