@@ -27,8 +27,7 @@ def get_export_keyboard(message_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📄 TXT", callback_data=f"export_txt_{message_id}"),
-            InlineKeyboardButton(text="📘 DOCX", callback_data=f"export_docx_{message_id}"),
-            InlineKeyboardButton(text="📕 PDF", callback_data=f"export_pdf_{message_id}")
+            InlineKeyboardButton(text="📘 DOCX", callback_data=f"export_docx_{message_id}")
         ],
         [
             InlineKeyboardButton(text="✨ AI-исправление", callback_data=f"ai_fix_{message_id}"),

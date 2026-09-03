@@ -40,8 +40,7 @@ async def handle_summary_request(callback: CallbackQuery):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="📄 TXT", callback_data=f"export_summary_txt_{message_id}"),
-                InlineKeyboardButton(text="📘 DOCX", callback_data=f"export_summary_docx_{message_id}"),
-                InlineKeyboardButton(text="📕 PDF", callback_data=f"export_summary_pdf_{message_id}")
+                InlineKeyboardButton(text="📘 DOCX", callback_data=f"export_summary_docx_{message_id}")
             ]
         ])
 
@@ -75,8 +74,7 @@ async def handle_ai_fix_request(callback: CallbackQuery):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="📄 TXT", callback_data=f"export_fixed_txt_{message_id}"),
-                InlineKeyboardButton(text="📘 DOCX", callback_data=f"export_fixed_docx_{message_id}"),
-                InlineKeyboardButton(text="📕 PDF", callback_data=f"export_fixed_pdf_{message_id}")
+                InlineKeyboardButton(text="📘 DOCX", callback_data=f"export_fixed_docx_{message_id}")
             ]
         ])
 
