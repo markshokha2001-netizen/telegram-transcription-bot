@@ -21,13 +21,20 @@ class Exporter:
         # Регистрируем шрифт DejaVu Sans для поддержки кириллицы в PDF
         try:
             font_path = Path(__file__).parent.parent.parent / "fonts" / "DejaVuSans.ttf"
+            print(f"Попытка загрузить шрифт из: {font_path}")
+            print(f"Файл существует: {font_path.exists()}")
+
             if font_path.exists():
                 pdfmetrics.registerFont(TTFont('DejaVuSans', str(font_path)))
                 self.pdf_font = 'DejaVuSans'
+                print(f"✅ Шрифт DejaVu Sans успешно зарегистрирован")
             else:
+                print(f"❌ Файл шрифта не найден: {font_path}")
                 self.pdf_font = 'Helvetica'  # Fallback
         except Exception as e:
-            print(f"Не удалось загрузить шрифт DejaVu Sans: {e}")
+            print(f"❌ Ошибка при загрузке шрифта DejaVu Sans: {e}")
+            import traceback
+            traceback.print_exc()
             self.pdf_font = 'Helvetica'
 
     def export_to_txt(self, text: str, filename: str = None) -> str:
