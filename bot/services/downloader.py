@@ -21,7 +21,6 @@ class Downloader:
             "--extract-audio",
             "--audio-format", "mp3",
             "--audio-quality", "0",
-            "--cookies-from-browser", "chrome",
             "--output", output_template,
             "--no-playlist",
             url
