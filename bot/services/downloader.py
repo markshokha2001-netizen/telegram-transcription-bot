@@ -13,64 +13,42 @@ class Downloader:
 
     async def download_audio_from_url_youtube(self, url: str) -> Optional[str]:
         """
-        Скачивает аудио с YouTube через yt-dlp с параметрами из VideoDownloadBot.
+        Скачивает аудио с YouTube через отдельный микросервис на Render.
         Возвращает путь к файлу или None при ошибке.
         """
-        output_template = str(self.download_dir / "%(id)s.%(ext)s")
-
-        # Параметры адаптированы из VideoDownloadBot для максимальной совместимости
-        cmd = [
-            "yt-dlp",
-            "--format", "bestaudio/best",
-            "--extract-audio",
-            "--audio-format", "mp3",
-            "--audio-quality", "0",
-            "--output", output_template,
-            "--no-playlist",
-            "--no-warnings",
-            "--no-check-certificate",
-            # Обход geo-ограничений и блокировок
-            "--geo-bypass",
-            # Множественные User-Agent и методы извлечения
-            "--extractor-args", "youtube:player_client=android,web",
-            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            # Обход rate limiting
-            "--limit-rate", "5M",
-            "--retries", "3",
-            "--fragment-retries", "3",
-            url
-        ]
-
-        async def _download():
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-            stdout, stderr = await process.communicate()
-
-            if process.returncode != 0:
-                error_msg = stderr.decode()
-                # Очищаем HTML-теги из ошибки для Telegram
-                import re
-                error_msg = re.sub(r'<[^>]+>', '', error_msg)
-                raise RuntimeError(f"yt-dlp завершился с ошибкой: {error_msg[:500]}")
-
-            for file in self.download_dir.glob("*.*"):
-                if file.suffix in [".mp3", ".m4a", ".wav", ".ogg"]:
-                    return str(file)
-
-            return None
+        youtube_service_url = "https://youtube-downloader-service-fhp5.onrender.com/download"
 
         try:
-            # Используем wait_for для надёжного timeout (3 минуты максимум для YouTube)
-            return await asyncio.wait_for(_download(), timeout=180.0)
+            async with aiohttp.ClientSession() as session:
+                # Отправляем запрос на микросервис
+                async with session.post(
+                    youtube_service_url,
+                    json={"url": url},
+                    timeout=aiohttp.ClientTimeout(total=180)
+                ) as response:
+
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise RuntimeError(f"YouTube микросервис вернул ошибку {response.status}: {error_text[:500]}")
+
+                    # Скачиваем аудиофайл
+                    output_filename = f"{uuid.uuid4().hex}.mp3"
+                    output_path = self.download_dir / output_filename
+
+                    with open(output_path, 'wb') as f:
+                        async for chunk in response.content.iter_chunked(8192):
+                            f.write(chunk)
+
+                    if output_path.exists() and output_path.stat().st_size > 0:
+                        return str(output_path)
+                    else:
+                        raise RuntimeError("Скачанный файл пустой или не существует")
 
         except asyncio.TimeoutError:
-            raise RuntimeError("Превышен timeout скачивания (3 минуты). YouTube может блокировать запросы с этого сервера.")
+            raise RuntimeError("Превышен timeout скачивания (3 минуты). Попробуйте другое видео.")
+        except aiohttp.ClientError as e:
+            raise RuntimeError(f"Ошибка подключения к YouTube микросервису: {str(e)}")
         except Exception as e:
-            # Очищаем HTML-теги из любых ошибок
             import re
             error_text = str(e)
             error_text = re.sub(r'<[^>]+>', '', error_text)

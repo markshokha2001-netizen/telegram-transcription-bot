@@ -32,10 +32,10 @@ async def handle_link(message: Message):
     status_msg = await message.answer("Принял, обрабатываю...")
 
     try:
-        print(f"[YouTube] Начинаем скачивание через yt-dlp (улучшенные параметры): {message.text}")
+        print(f"[YouTube] Начинаем скачивание через микросервис: {message.text}")
         await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube...")
 
-        # Используем yt-dlp с параметрами из VideoDownloadBot
+        # Используем отдельный микросервис на Render для YouTube
         audio_path = await downloader.download_audio_from_url_youtube(message.text)
 
         if not audio_path:
