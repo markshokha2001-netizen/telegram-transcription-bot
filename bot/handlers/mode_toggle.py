@@ -45,33 +45,12 @@ async def handle_summary_request(callback: CallbackQuery):
             ]
         ])
 
-        # Telegram лимит: 4096 символов на сообщение
-        MAX_MESSAGE_LENGTH = 4000
-
-        if len(summary) <= MAX_MESSAGE_LENGTH:
-            # Короткий конспект — одним сообщением
-            await callback.message.answer(f"🤖 Конспект:\n\n{summary}", reply_markup=keyboard)
-        else:
-            # Длинный конспект — разбиваем на части
-            parts = []
-            remaining = summary
-
-            while remaining:
-                chunk = remaining[:MAX_MESSAGE_LENGTH]
-                remaining = remaining[MAX_MESSAGE_LENGTH:]
-                parts.append(chunk)
-
-            # Отправляем все части
-            for i, part in enumerate(parts, 1):
-                await callback.message.answer(f"🤖 Конспект (часть {i}/{len(parts)}):\n\n{part}")
-
-            # Последнее сообщение с кнопками
-            await callback.message.answer(
-                f"✅ Конспект готов ({len(parts)} частей, {len(summary)} символов)",
-                reply_markup=keyboard
-            )
-
-        await status_msg.delete()
+        # Не присылаем текст в чат — только кнопки экспорта
+        await status_msg.edit_text(
+            f"✅ Конспект готов ({len(summary)} символов)\n\n"
+            f"Выберите формат для скачивания:",
+            reply_markup=keyboard
+        )
 
     except Exception as e:
         await callback.message.answer(f"❌ Ошибка при создании конспекта: {str(e)}")
@@ -106,33 +85,12 @@ async def handle_ai_fix_request(callback: CallbackQuery):
             ]
         ])
 
-        # Telegram лимит: 4096 символов на сообщение
-        MAX_MESSAGE_LENGTH = 4000
-
-        if len(fixed_text) <= MAX_MESSAGE_LENGTH:
-            # Короткий текст — одним сообщением
-            await callback.message.answer(f"✨ Исправленный текст:\n\n{fixed_text}", reply_markup=keyboard)
-        else:
-            # Длинный текст — разбиваем на части
-            parts = []
-            remaining = fixed_text
-
-            while remaining:
-                chunk = remaining[:MAX_MESSAGE_LENGTH]
-                remaining = remaining[MAX_MESSAGE_LENGTH:]
-                parts.append(chunk)
-
-            # Отправляем все части
-            for i, part in enumerate(parts, 1):
-                await callback.message.answer(f"✨ Исправленный текст (часть {i}/{len(parts)}):\n\n{part}")
-
-            # Последнее сообщение с кнопками
-            await callback.message.answer(
-                f"✅ Исправление завершено ({len(parts)} частей, {len(fixed_text)} символов)",
-                reply_markup=keyboard
-            )
-
-        await status_msg.delete()
+        # Не присылаем текст в чат — только кнопки экспорта
+        await status_msg.edit_text(
+            f"✅ Исправление завершено ({len(fixed_text)} символов)\n\n"
+            f"Выберите формат для скачивания:",
+            reply_markup=keyboard
+        )
 
     except Exception as e:
         await callback.message.answer(f"❌ Ошибка при исправлении текста: {str(e)}")
