@@ -42,6 +42,13 @@ async def handle_link(message: Message):
             raise RuntimeError("Не удалось скачать аудио")
 
         print(f"[YouTube] Аудио скачано: {audio_path}")
+
+        # Проверяем размер и сжимаем если нужно (для Groq API лимит 25 МБ)
+        await status_msg.edit_text("🔄 Проверяю размер файла...")
+        from bot.services.audio_converter import compress_audio_if_needed
+        audio_path = await compress_audio_if_needed(audio_path)
+        print(f"[YouTube] Финальный файл для транскрибации: {audio_path}")
+
         audio_files[message.message_id] = audio_path
 
         await status_msg.edit_text("🎤 Транскрибирую...")

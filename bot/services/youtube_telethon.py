@@ -85,7 +85,7 @@ async def download_from_youtube(url: str) -> str:
 
         # Ждём ответ от бота (mp3 файл)
         download_path = None
-        timeout = 120  # 2 минуты таймаут
+        timeout = 600  # 10 минут таймаут (для больших файлов)
 
         async def wait_for_audio():
             nonlocal download_path
