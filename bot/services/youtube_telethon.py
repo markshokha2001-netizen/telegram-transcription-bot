@@ -18,7 +18,7 @@ API_HASH = os.getenv("TELEGRAM_API_HASH", "bd666a5f2fc702fed3e7c32bc411a696")
 PHONE = os.getenv("TELEGRAM_PHONE", "+79113583410")
 
 # Bot username
-HYD_BOT = "hyd_yt_mp3_bot"
+HYD_BOT = "DiggerDigitalBot"
 
 # Download directory
 DOWNLOAD_DIR = Path("downloads")
