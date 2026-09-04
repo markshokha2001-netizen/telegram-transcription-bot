@@ -78,7 +78,30 @@ async def handle_link(message: Message):
         from bot.handlers.media import get_export_keyboard
         keyboard = get_export_keyboard(message.message_id)
 
-        await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
+        # Telegram лимит: 4096 символов на сообщение
+        # Если текст длиннее, разбиваем на части
+        MAX_MESSAGE_LENGTH = 4000  # Оставляем запас для заголовка
+
+        if len(transcript) <= MAX_MESSAGE_LENGTH:
+            # Короткий текст — отправляем одним сообщением
+            await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
+        else:
+            # Длинный текст — разбиваем на части
+            # Первое сообщение с кнопками
+            first_part = transcript[:MAX_MESSAGE_LENGTH]
+            await message.answer(f"📝 Дословно (часть 1):\n\n{first_part}", reply_markup=keyboard)
+
+            # Остальные части без кнопок
+            remaining = transcript[MAX_MESSAGE_LENGTH:]
+            part_num = 2
+
+            while remaining:
+                chunk = remaining[:MAX_MESSAGE_LENGTH]
+                remaining = remaining[MAX_MESSAGE_LENGTH:]
+                await message.answer(f"📝 Дословно (часть {part_num}):\n\n{chunk}")
+                part_num += 1
+
+            print(f"[YouTube] Текст разбит на {part_num - 1} частей")
 
     except Exception as e:
         print(f"[YouTube] Ошибка: {str(e)}")
