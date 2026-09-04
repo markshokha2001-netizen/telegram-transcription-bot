@@ -32,10 +32,10 @@ async def handle_link(message: Message):
     status_msg = await message.answer("Принял, обрабатываю...")
 
     try:
-        print(f"[YouTube] Начинаем скачивание через yt-dlp: {message.text}")
-        await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube...")
+        print(f"[YouTube] Начинаем скачивание через @DiggerDigitalBot: {message.text}")
+        await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube через @DiggerDigitalBot...")
 
-        # Используем yt-dlp для прямого скачивания (быстрее и надёжнее)
+        # Используем Telethon + @DiggerDigitalBot для скачивания
         audio_path = await downloader.download_audio_from_url_youtube(message.text)
 
         if not audio_path:

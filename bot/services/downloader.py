@@ -13,49 +13,16 @@ class Downloader:
 
     async def download_audio_from_url_youtube(self, url: str) -> Optional[str]:
         """
-        Скачивает аудио с YouTube через yt-dlp.
-        Сразу скачивает в низком битрейте (64k) для быстроты и экономии.
+        Скачивает аудио с YouTube через Telethon + @DiggerDigitalBot.
         Возвращает путь к файлу или None при ошибке.
         """
-        output_template = str(self.download_dir / "%(id)s.%(ext)s")
-
-        cmd = [
-            "yt-dlp",
-            "--extract-audio",
-            "--audio-format", "mp3",
-            "--audio-quality", "9",  # Низкое качество (64k битрейт, оптимально для речи)
-            "--postprocessor-args", "ffmpeg:-ar 16000 -ac 1",  # 16kHz mono для Whisper
-            "--output", output_template,
-            "--no-playlist",
-            url
-        ]
-
-        async def _download():
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-            stdout, stderr = await process.communicate()
-
-            if process.returncode != 0:
-                error_msg = stderr.decode()
-                raise RuntimeError(f"yt-dlp завершился с ошибкой: {error_msg[:500]}")
-
-            # Ищем скачанный файл
-            for file in self.download_dir.glob("*.*"):
-                if file.suffix in [".mp3", ".m4a", ".wav", ".ogg"]:
-                    return str(file)
-
-            return None
-
         try:
-            # Увеличиваем timeout до 5 минут (для длинных видео)
-            return await asyncio.wait_for(_download(), timeout=300.0)
+            from bot.services.youtube_telethon import download_from_youtube
 
-        except asyncio.TimeoutError:
-            raise RuntimeError(f"Превышен timeout скачивания (5 минут). Попробуйте другое видео.")
+            # Используем встроенный Telethon модуль
+            file_path = await download_from_youtube(url)
+            return file_path
+
         except Exception as e:
             import re
             error_text = str(e)
