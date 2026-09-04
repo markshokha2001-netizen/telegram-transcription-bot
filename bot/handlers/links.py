@@ -32,11 +32,11 @@ async def handle_link(message: Message):
     status_msg = await message.answer("Принял, обрабатываю...")
 
     try:
-        print(f"[YouTube] Начинаем скачивание через Cobalt API: {message.text}")
+        print(f"[YouTube] Начинаем скачивание через yt-dlp (Android client): {message.text}")
         await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube...")
 
-        # Используем Cobalt API вместо yt-dlp
-        audio_path = await downloader.download_audio_from_url_cobalt(message.text)
+        # Используем yt-dlp с параметрами для обхода блокировок YouTube
+        audio_path = await downloader.download_audio_from_url_youtube(message.text)
 
         if not audio_path:
             raise RuntimeError("Не удалось скачать аудио")
