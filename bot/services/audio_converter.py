@@ -30,15 +30,23 @@ async def compress_audio_if_needed(audio_path: str) -> str:
     # Создаём путь для сжатого файла
     compressed_path = audio_file.parent / f"{audio_file.stem}_compressed.mp3"
 
+    # Адаптивный битрейт: для очень больших файлов используем более агрессивное сжатие
+    if file_size_mb > 100:
+        bitrate = "32k"  # ~4 МБ на час аудио (для файлов >100 МБ)
+        logger.info(f"Very large file detected, using aggressive compression: bitrate={bitrate}")
+    else:
+        bitrate = "64k"  # ~8 МБ на час аудио (стандартное сжатие)
+        logger.info(f"Using standard compression: bitrate={bitrate}")
+
     try:
-        # Сжимаем через ffmpeg АСИНХРОННО (битрейт 64k = ~8 MB на час аудио)
-        # Это в ~20 раз меньше оригинала, но качество речи сохраняется
+        # Сжимаем через ffmpeg АСИНХРОННО
+        # Качество речи сохраняется даже при низком битрейте
         process = await asyncio.create_subprocess_exec(
             "ffmpeg",
             "-i", str(audio_path),
             "-ar", "16000",  # Sample rate 16kHz (оптимально для речи)
             "-ac", "1",  # Mono (стерео не нужно для речи)
-            "-b:a", "64k",  # Битрейт 64 kbps
+            "-b:a", bitrate,  # Адаптивный битрейт
             "-y",  # Перезаписать если существует
             str(compressed_path),
             stdout=asyncio.subprocess.PIPE,
