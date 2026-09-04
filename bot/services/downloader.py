@@ -13,21 +13,31 @@ class Downloader:
 
     async def download_audio_from_url_youtube(self, url: str) -> Optional[str]:
         """
-        Скачивает аудио с YouTube через yt-dlp с параметрами для обхода блокировок.
+        Скачивает аудио с YouTube через yt-dlp с параметрами из VideoDownloadBot.
         Возвращает путь к файлу или None при ошибке.
         """
         output_template = str(self.download_dir / "%(id)s.%(ext)s")
 
+        # Параметры адаптированы из VideoDownloadBot для максимальной совместимости
         cmd = [
             "yt-dlp",
+            "--format", "bestaudio/best",
             "--extract-audio",
             "--audio-format", "mp3",
             "--audio-quality", "0",
             "--output", output_template,
             "--no-playlist",
-            # Параметры для обхода блокировок YouTube
-            "--extractor-args", "youtube:player_client=android",
-            "--user-agent", "com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip",
+            "--no-warnings",
+            "--no-check-certificate",
+            # Обход geo-ограничений и блокировок
+            "--geo-bypass",
+            # Множественные User-Agent и методы извлечения
+            "--extractor-args", "youtube:player_client=android,web",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            # Обход rate limiting
+            "--limit-rate", "5M",
+            "--retries", "3",
+            "--fragment-retries", "3",
             url
         ]
 
@@ -42,7 +52,10 @@ class Downloader:
 
             if process.returncode != 0:
                 error_msg = stderr.decode()
-                raise RuntimeError(f"yt-dlp завершился с ошибкой: {error_msg}")
+                # Очищаем HTML-теги из ошибки для Telegram
+                import re
+                error_msg = re.sub(r'<[^>]+>', '', error_msg)
+                raise RuntimeError(f"yt-dlp завершился с ошибкой: {error_msg[:500]}")
 
             for file in self.download_dir.glob("*.*"):
                 if file.suffix in [".mp3", ".m4a", ".wav", ".ogg"]:
@@ -51,13 +64,17 @@ class Downloader:
             return None
 
         try:
-            # Используем wait_for для надёжного timeout (2 минуты максимум)
-            return await asyncio.wait_for(_download(), timeout=120.0)
+            # Используем wait_for для надёжного timeout (3 минуты максимум для YouTube)
+            return await asyncio.wait_for(_download(), timeout=180.0)
 
         except asyncio.TimeoutError:
-            raise RuntimeError("Превышен timeout скачивания (2 минуты). Попробуйте другое видео.")
+            raise RuntimeError("Превышен timeout скачивания (3 минуты). YouTube может блокировать запросы с этого сервера.")
         except Exception as e:
-            raise RuntimeError(f"Ошибка при скачивании с YouTube: {str(e)}")
+            # Очищаем HTML-теги из любых ошибок
+            import re
+            error_text = str(e)
+            error_text = re.sub(r'<[^>]+>', '', error_text)
+            raise RuntimeError(f"Ошибка при скачивании с YouTube: {error_text[:500]}")
 
     async def download_audio_from_url(self, url: str) -> Optional[str]:
         """

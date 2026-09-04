@@ -29,26 +29,13 @@ async def handle_link(message: Message):
     if not match:
         return
 
-    # YouTube временно отключен — слишком много блокировок на Render
-    await message.answer(
-        "❌ Извините, скачивание с YouTube временно недоступно.\n\n"
-        "YouTube активно блокирует серверы хостинга (Render).\n\n"
-        "**Решение:**\n"
-        "1. Скачайте аудио с YouTube через бот @VideoDownloadBot\n"
-        "2. Отправьте мне скачанный файл\n"
-        "3. Я сделаю транскрипцию и AI-обработку\n\n"
-        "Или отправьте обычное аудио/видео файлом."
-    )
-    return
-
-    # Код ниже временно отключен
     status_msg = await message.answer("Принял, обрабатываю...")
 
     try:
-        print(f"[YouTube] Начинаем скачивание через yt-dlp (Android client): {message.text}")
+        print(f"[YouTube] Начинаем скачивание через yt-dlp (улучшенные параметры): {message.text}")
         await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube...")
 
-        # Используем yt-dlp с параметрами для обхода блокировок YouTube
+        # Используем yt-dlp с параметрами из VideoDownloadBot
         audio_path = await downloader.download_audio_from_url_youtube(message.text)
 
         if not audio_path:
