@@ -13,26 +13,28 @@ class Downloader:
 
     async def download_audio_from_url_youtube(self, url: str) -> Optional[str]:
         """
-        Скачивает аудио с YouTube через отдельный микросервис на Render.
+        Скачивает аудио с YouTube через Telethon proxy сервис.
+        Сервис использует @hyd_yt_mp3_bot для скачивания.
         Возвращает путь к файлу или None при ошибке.
         """
-        youtube_service_url = "https://youtube-downloader-service-fhp5.onrender.com/download"
+        youtube_service_url = "https://youtube-proxy-telethon.onrender.com/download"
 
         try:
             async with aiohttp.ClientSession() as session:
-                # Отправляем запрос на микросервис
+                # Отправляем запрос на Telethon proxy сервис
+                request_id = uuid.uuid4().hex
                 async with session.post(
                     youtube_service_url,
-                    json={"url": url},
+                    json={"url": url, "request_id": request_id},
                     timeout=aiohttp.ClientTimeout(total=180)
                 ) as response:
 
                     if response.status != 200:
                         error_text = await response.text()
-                        raise RuntimeError(f"YouTube микросервис вернул ошибку {response.status}: {error_text[:500]}")
+                        raise RuntimeError(f"YouTube сервис вернул ошибку {response.status}: {error_text[:500]}")
 
                     # Скачиваем аудиофайл
-                    output_filename = f"{uuid.uuid4().hex}.mp3"
+                    output_filename = f"{request_id}.mp3"
                     output_path = self.download_dir / output_filename
 
                     with open(output_path, 'wb') as f:
@@ -47,7 +49,7 @@ class Downloader:
         except asyncio.TimeoutError:
             raise RuntimeError("Превышен timeout скачивания (3 минуты). Попробуйте другое видео.")
         except aiohttp.ClientError as e:
-            raise RuntimeError(f"Ошибка подключения к YouTube микросервису: {str(e)}")
+            raise RuntimeError(f"Ошибка подключения к YouTube сервису: {str(e)}")
         except Exception as e:
             import re
             error_text = str(e)

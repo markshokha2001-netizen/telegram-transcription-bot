@@ -29,32 +29,13 @@ async def handle_link(message: Message):
     if not match:
         return
 
-    # YouTube недоступен на Render — блокировка от YouTube
-    await message.answer(
-        "❌ **YouTube недоступен на бесплатном хостинге**\n\n"
-        "YouTube блокирует все бесплатные серверы Render.\n\n"
-        "**Как получить транскрипцию YouTube видео:**\n\n"
-        "1️⃣ Откройте бот @hyd_yt_mp3_bot\n"
-        "2️⃣ Отправьте ему вашу YouTube ссылку\n"
-        "3️⃣ Скачайте mp3 файл который он пришлёт\n"
-        "4️⃣ Отправьте mp3 файл мне\n"
-        "5️⃣ Я сделаю транскрипцию + AI-исправление + конспект + экспорт\n\n"
-        "**Или:**\n"
-        "• Отправьте обычное аудио/видео файлом (до 20 МБ)\n"
-        "• Запишите голосовое сообщение\n\n"
-        "Вся AI-обработка работает отлично! 🚀",
-        parse_mode=None
-    )
-    return
-
-    # Код ниже не используется (YouTube заблокирован)
     status_msg = await message.answer("Принял, обрабатываю...")
 
     try:
-        print(f"[YouTube] Начинаем скачивание через микросервис: {message.text}")
-        await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube...")
+        print(f"[YouTube] Начинаем скачивание через Telethon proxy: {message.text}")
+        await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube через @hyd_yt_mp3_bot...")
 
-        # Используем отдельный микросервис на Render для YouTube
+        # Используем Telethon proxy сервис для автоматического скачивания
         audio_path = await downloader.download_audio_from_url_youtube(message.text)
 
         if not audio_path:
