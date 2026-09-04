@@ -36,6 +36,19 @@ async def start_health_server():
 
 
 async def main():
+    # Очистка папки downloads при старте (удаляем старые файлы)
+    import shutil
+    from pathlib import Path
+    downloads_dir = Path("downloads")
+    if downloads_dir.exists():
+        try:
+            shutil.rmtree(downloads_dir)
+            logger.info("Deleted old downloads directory")
+        except Exception as e:
+            logger.warning(f"Failed to delete downloads directory: {e}")
+    downloads_dir.mkdir(exist_ok=True)
+    logger.info("Created fresh downloads directory")
+
     # Настройка сессии с прокси
     session_kwargs = {}
 
