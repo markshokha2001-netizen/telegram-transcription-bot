@@ -90,42 +90,62 @@ async def download_from_youtube(url: str) -> str:
         async def wait_for_audio():
             nonlocal download_path
 
-            # Ждём новое сообщение от бота
-            await asyncio.sleep(2)  # Даём боту время на обработку
+            logger.info(f"[{request_id}] Waiting for response from @{HYD_BOT}...")
 
-            async for message in client.iter_messages(HYD_BOT, limit=5):
-                logger.info(f"[{request_id}] Checking message: has_audio={bool(message.audio)}, has_document={bool(message.document)}, text={message.text[:50] if message.text else 'None'}")
+            # Запоминаем ID последнего сообщения перед отправкой
+            messages_before = await client.get_messages(HYD_BOT, limit=1)
+            last_message_id = messages_before[0].id if messages_before else 0
 
-                # Проверяем, что это аудио или документ
-                if message.audio:
-                    logger.info(f"[{request_id}] Found audio message")
-                    filename = f"youtube_{request_id}.mp3"
-                    download_path = DOWNLOAD_DIR / filename
+            # Активно ждём новое сообщение (проверяем каждые 5 секунд)
+            max_wait_time = timeout
+            check_interval = 5  # секунд между проверками
+            elapsed = 0
 
-                    logger.info(f"[{request_id}] Downloading audio from @{HYD_BOT}...")
-                    await message.download_media(str(download_path))
-                    logger.info(f"[{request_id}] Audio downloaded: {download_path}, size: {download_path.stat().st_size / 1024 / 1024:.2f} MB")
-                    return
+            while elapsed < max_wait_time:
+                await asyncio.sleep(check_interval)
+                elapsed += check_interval
 
-                elif message.document:
-                    logger.info(f"[{request_id}] Found document, mime_type={message.document.mime_type}, size={message.document.size / 1024 / 1024:.2f} MB")
+                # Проверяем новые сообщения после отправки
+                async for message in client.iter_messages(HYD_BOT, limit=10):
+                    # Пропускаем старые сообщения (до отправки ссылки)
+                    if message.id <= last_message_id:
+                        continue
 
-                    # Принимаем любой документ (mp3, m4a, ogg и т.д.)
-                    if message.document.mime_type and 'audio' in message.document.mime_type:
-                        # Получаем оригинальное расширение файла
-                        file_ext = 'mp3'  # по умолчанию
-                        for attr in message.document.attributes:
-                            if isinstance(attr, DocumentAttributeFilename) and attr.file_name:
-                                file_ext = attr.file_name.split('.')[-1] if '.' in attr.file_name else 'mp3'
-                                break
+                    logger.info(f"[{request_id}] Checking message #{message.id}: has_audio={bool(message.audio)}, has_document={bool(message.document)}, text={message.text[:50] if message.text else 'None'}")
 
-                        filename = f"youtube_{request_id}.{file_ext}"
+                    # Проверяем, что это аудио или документ
+                    if message.audio:
+                        logger.info(f"[{request_id}] Found audio message")
+                        filename = f"youtube_{request_id}.mp3"
                         download_path = DOWNLOAD_DIR / filename
 
-                        logger.info(f"[{request_id}] Downloading document (audio) from @{HYD_BOT} as {file_ext}...")
+                        logger.info(f"[{request_id}] Downloading audio from @{HYD_BOT}...")
                         await message.download_media(str(download_path))
-                        logger.info(f"[{request_id}] Document downloaded: {download_path}, size: {download_path.stat().st_size / 1024 / 1024:.2f} MB")
+                        logger.info(f"[{request_id}] Audio downloaded: {download_path}, size: {download_path.stat().st_size / 1024 / 1024:.2f} MB")
                         return
+
+                    elif message.document:
+                        logger.info(f"[{request_id}] Found document, mime_type={message.document.mime_type}, size={message.document.size / 1024 / 1024:.2f} MB")
+
+                        # Принимаем любой документ (mp3, m4a, ogg и т.д.)
+                        if message.document.mime_type and 'audio' in message.document.mime_type:
+                            # Получаем оригинальное расширение файла
+                            file_ext = 'mp3'  # по умолчанию
+                            for attr in message.document.attributes:
+                                if isinstance(attr, DocumentAttributeFilename) and attr.file_name:
+                                    file_ext = attr.file_name.split('.')[-1] if '.' in attr.file_name else 'mp3'
+                                    break
+
+                            filename = f"youtube_{request_id}.{file_ext}"
+                            download_path = DOWNLOAD_DIR / filename
+
+                            logger.info(f"[{request_id}] Downloading document (audio) from @{HYD_BOT} as {file_ext}...")
+                            await message.download_media(str(download_path))
+                            logger.info(f"[{request_id}] Document downloaded: {download_path}, size: {download_path.stat().st_size / 1024 / 1024:.2f} MB")
+                            return
+
+                # Если не нашли, продолжаем ждать
+                logger.info(f"[{request_id}] No new audio yet, waiting... ({elapsed}/{max_wait_time}s)")
 
             raise RuntimeError(f"No audio file received from @{HYD_BOT}")
 
