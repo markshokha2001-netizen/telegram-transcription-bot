@@ -9,6 +9,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 GROQ_MAX_SIZE_MB = 25
+MAX_PROCESSABLE_SIZE_MB = 200  # Максимальный размер для обработки
 
 
 async def compress_audio_if_needed(audio_path: str) -> str:
@@ -20,6 +21,14 @@ async def compress_audio_if_needed(audio_path: str) -> str:
     file_size_mb = audio_file.stat().st_size / 1024 / 1024
 
     logger.info(f"Audio file size: {file_size_mb:.2f} MB")
+
+    # Лимит на обработку: файлы >200 МБ слишком большие
+    if file_size_mb > MAX_PROCESSABLE_SIZE_MB:
+        raise RuntimeError(
+            f"Файл слишком большой ({file_size_mb:.0f} МБ). "
+            f"Максимальный размер для обработки: {MAX_PROCESSABLE_SIZE_MB} МБ. "
+            f"Попробуйте разбить видео на части или использовать более короткое видео."
+        )
 
     if file_size_mb <= GROQ_MAX_SIZE_MB:
         logger.info("File size OK for Groq API")
