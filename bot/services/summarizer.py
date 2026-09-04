@@ -12,7 +12,7 @@ class Summarizer:
             follow_redirects=True
         )
         self.client = AsyncGroq(api_key=GROQ_API_KEY, http_client=http_client)
-        self.max_chars_per_chunk = 15000  # ~4000 токенов (запас для промпта)
+        self.max_chars_per_chunk = 10000  # ~5000-6000 токенов (с запасом для промпта = ~6000-7000 токенов)
 
     def split_text(self, text: str, max_chars: int) -> list[str]:
         """Разбивает текст на части по максимальному количеству символов"""

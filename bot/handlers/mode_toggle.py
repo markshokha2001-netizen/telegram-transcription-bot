@@ -145,6 +145,10 @@ async def handle_export_txt(callback: CallbackQuery):
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📄 Транскрипт в формате TXT")
 
+        # Небольшая задержка перед удалением (Telegram должен успеть загрузить файл)
+        import asyncio
+        await asyncio.sleep(2)
+
         # Очищаем файл после отправки
         downloader.cleanup(filepath)
 
@@ -173,6 +177,10 @@ async def handle_export_docx(callback: CallbackQuery):
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📘 Транскрипт в формате DOCX")
 
+        # Небольшая задержка перед удалением (Telegram должен успеть загрузить файл)
+        import asyncio
+        await asyncio.sleep(2)
+
         # Очищаем файл после отправки
         downloader.cleanup(filepath)
 
@@ -200,6 +208,10 @@ async def handle_export_pdf(callback: CallbackQuery):
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📕 Транскрипт в формате PDF")
+
+        # Небольшая задержка перед удалением (Telegram должен успеть загрузить файл)
+        import asyncio
+        await asyncio.sleep(2)
 
         # Очищаем файл после отправки
         downloader.cleanup(filepath)
@@ -231,6 +243,10 @@ async def handle_export_summary_txt(callback: CallbackQuery):
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📄 Конспект в формате TXT")
 
+        # Небольшая задержка перед удалением (Telegram должен успеть загрузить файл)
+        import asyncio
+        await asyncio.sleep(2)
+
         downloader.cleanup(filepath)
 
     except Exception as e:
@@ -257,6 +273,10 @@ async def handle_export_summary_docx(callback: CallbackQuery):
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📘 Конспект в формате DOCX")
+
+        # Небольшая задержка перед удалением (Telegram должен успеть загрузить файл)
+        import asyncio
+        await asyncio.sleep(2)
 
         downloader.cleanup(filepath)
 
@@ -285,31 +305,9 @@ async def handle_export_summary_pdf(callback: CallbackQuery):
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📕 Конспект в формате PDF")
 
-        downloader.cleanup(filepath)
-
-    except Exception as e:
-        await callback.message.answer(f"❌ Ошибка при экспорте: {str(e)}")
-
-
-# Экспорт исправленных текстов
-
-@router.callback_query(F.data.startswith("export_fixed_txt_"))
-async def handle_export_fixed_txt(callback: CallbackQuery):
-    """Обработка экспорта исправленного текста в TXT"""
-    await callback.answer()
-
-    message_id = int(callback.data.split("_")[3])
-
-    if message_id not in fixed_texts:
-        await callback.message.answer("❌ Исправленный текст не найден. Возможно, бот был перезапущен.")
-        return
-
-    try:
-        summary = summaries[message_id]
-        filepath = exporter.export_to_pdf(summary)
-
-        file = FSInputFile(filepath)
-        await callback.message.answer_document(file, caption="📕 Конспект в формате PDF")
+        # Небольшая задержка перед удалением (Telegram должен успеть загрузить файл)
+        import asyncio
+        await asyncio.sleep(2)
 
         downloader.cleanup(filepath)
 
@@ -340,6 +338,10 @@ async def handle_export_fixed_txt(callback: CallbackQuery):
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📄 Исправленный текст в формате TXT")
 
+        # Небольшая задержка перед удалением (Telegram должен успеть загрузить файл)
+        import asyncio
+        await asyncio.sleep(2)
+
         downloader.cleanup(filepath)
 
     except Exception as e:
@@ -367,6 +369,10 @@ async def handle_export_fixed_docx(callback: CallbackQuery):
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📘 Исправленный текст в формате DOCX")
 
+        # Небольшая задержка перед удалением (Telegram должен успеть загрузить файл)
+        import asyncio
+        await asyncio.sleep(2)
+
         downloader.cleanup(filepath)
 
     except Exception as e:
@@ -393,6 +399,10 @@ async def handle_export_fixed_pdf(callback: CallbackQuery):
 
         file = FSInputFile(filepath)
         await callback.message.answer_document(file, caption="📕 Исправленный текст в формате PDF")
+
+        # Небольшая задержка перед удалением (Telegram должен успеть загрузить файл)
+        import asyncio
+        await asyncio.sleep(2)
 
         downloader.cleanup(filepath)
 
