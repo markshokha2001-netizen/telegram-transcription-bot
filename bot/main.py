@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
@@ -9,6 +11,28 @@ from bot.handlers import media, links, mode_toggle, start
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+async def health_check(request):
+    """Health check endpoint for Render"""
+    return web.Response(text="OK")
+
+
+async def start_health_server():
+    """Start a simple HTTP server for Render health checks"""
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    # Render provides PORT environment variable
+    port = int(os.getenv('PORT', 8080))
+
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logger.info(f"Health check server started on port {port}")
 
 
 async def main():
@@ -49,6 +73,9 @@ async def main():
     dp.include_router(mode_toggle.router)
     dp.include_router(media.router)
     dp.include_router(links.router)
+
+    # Start health check server for Render (runs in background)
+    asyncio.create_task(start_health_server())
 
     logger.info("Бот запущен")
 
