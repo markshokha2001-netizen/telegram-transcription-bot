@@ -55,7 +55,9 @@ async def startup():
         # Проверяем доступность @hyd_yt_mp3_bot
         try:
             entity = await client.get_entity(HYD_BOT)
-            logger.info(f"✅ Found @{HYD_BOT}: {entity.title}")
+            # Может быть User или Bot
+            name = getattr(entity, 'title', None) or getattr(entity, 'first_name', HYD_BOT)
+            logger.info(f"✅ Found @{HYD_BOT}: {name}")
         except Exception as e:
             logger.error(f"❌ Cannot find @{HYD_BOT}: {e}")
 
