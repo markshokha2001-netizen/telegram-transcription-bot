@@ -45,8 +45,19 @@ async def handle_link(message: Message):
 
         # Проверяем размер и сжимаем если нужно (для Groq API лимит 25 МБ)
         await status_msg.edit_text("🔄 Проверяю размер файла...")
+        print(f"[YouTube] ПЕРЕД сжатием: {audio_path}")
+
         from bot.services.audio_converter import compress_audio_if_needed
-        audio_path = await compress_audio_if_needed(audio_path)
+
+        try:
+            audio_path = await compress_audio_if_needed(audio_path)
+            print(f"[YouTube] ✅ ПОСЛЕ сжатия: {audio_path}")
+        except Exception as compress_error:
+            print(f"[YouTube] ❌ ОШИБКА сжатия: {compress_error}")
+            import traceback
+            traceback.print_exc()
+            # Продолжаем с оригинальным файлом (хотя Groq откажет, но увидим ошибку)
+
         print(f"[YouTube] Финальный файл для транскрибации: {audio_path}")
 
         audio_files[message.message_id] = audio_path
