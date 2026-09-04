@@ -4,7 +4,7 @@ from aiogram import Router, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from bot.services.downloader import Downloader
 from bot.services.groq_transcriber import GroqTranscriber
-from bot.handlers.media import transcripts, audio_files
+from bot.handlers.media import transcripts, audio_files, file_names
 
 router = Router()
 downloader = Downloader()
@@ -29,24 +29,14 @@ async def handle_link(message: Message):
     if not match:
         return
 
-    # Временно отключено из-за блокировки YouTube на Render
-    await message.answer(
-        "❌ Извините, скачивание с YouTube временно недоступно.\n\n"
-        "YouTube блокирует скачивания с серверов Render (HTTP 429/403).\n\n"
-        "Вы можете:\n"
-        "• Скачать аудио с YouTube отдельно и отправить файлом\n"
-        "• Отправить обычное аудио/видео файлом"
-    )
-    return
-
-    # Код ниже временно не используется
     status_msg = await message.answer("Принял, обрабатываю...")
 
     try:
-        print(f"[YouTube] Начинаем скачивание: {message.text}")
+        print(f"[YouTube] Начинаем скачивание через Cobalt API: {message.text}")
         await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube...")
 
-        audio_path = await downloader.download_audio_from_url(message.text)
+        # Используем Cobalt API вместо yt-dlp
+        audio_path = await downloader.download_audio_from_url_cobalt(message.text)
 
         if not audio_path:
             raise RuntimeError("Не удалось скачать аудио")
@@ -62,10 +52,13 @@ async def handle_link(message: Message):
         print(f"[YouTube] Транскрибация завершена, длина текста: {len(transcript)}")
         transcripts[message.message_id] = transcript
 
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🤖 Сделать конспект", callback_data=f"summary_{message.message_id}")],
-            [InlineKeyboardButton(text="🎵 Прислать аудио отдельно", callback_data=f"audio_{message.message_id}")]
-        ])
+        # Сохраняем имя файла для экспорта (используем ID видео из URL)
+        video_id = match.group(5)  # ID видео из regex
+        file_names[message.message_id] = f"youtube_{video_id}"
+
+        # Импортируем функцию создания клавиатуры
+        from bot.handlers.media import get_export_keyboard
+        keyboard = get_export_keyboard(message.message_id)
 
         await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
 

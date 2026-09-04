@@ -1,6 +1,8 @@
 import os
 import asyncio
 import subprocess
+import aiohttp
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +10,62 @@ class Downloader:
     def __init__(self, download_dir: str = "downloads"):
         self.download_dir = Path(download_dir)
         self.download_dir.mkdir(exist_ok=True)
+
+    async def download_audio_from_url_cobalt(self, url: str) -> Optional[str]:
+        """
+        Скачивает аудио через Cobalt API (поддерживает YouTube, TikTok, Twitter и др.)
+        Возвращает путь к файлу или None при ошибке.
+        """
+        try:
+            # Запрос к Cobalt API
+            async with aiohttp.ClientSession() as session:
+                # Шаг 1: Получить ссылку на аудио от Cobalt
+                cobalt_api = "https://co.wuk.sh/api/json"
+                payload = {
+                    "url": url,
+                    "isAudioOnly": True,  # Скачиваем только аудио
+                    "aFormat": "mp3",     # Формат аудио
+                    "filenamePattern": "basic"
+                }
+
+                async with session.post(cobalt_api, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise RuntimeError(f"Cobalt API вернул ошибку {response.status}: {error_text}")
+
+                    result = await response.json()
+
+                    # Проверяем статус ответа
+                    if result.get("status") != "stream" and result.get("status") != "redirect":
+                        error_msg = result.get("text", "Неизвестная ошибка")
+                        raise RuntimeError(f"Cobalt API: {error_msg}")
+
+                    audio_url = result.get("url")
+                    if not audio_url:
+                        raise RuntimeError("Cobalt API не вернул ссылку на аудио")
+
+                # Шаг 2: Скачать аудиофайл по полученной ссылке
+                output_filename = f"{uuid.uuid4().hex}.mp3"
+                output_path = self.download_dir / output_filename
+
+                async with session.get(audio_url, timeout=aiohttp.ClientTimeout(total=120)) as audio_response:
+                    if audio_response.status != 200:
+                        raise RuntimeError(f"Не удалось скачать аудио: HTTP {audio_response.status}")
+
+                    # Скачиваем файл
+                    with open(output_path, 'wb') as f:
+                        async for chunk in audio_response.content.iter_chunked(8192):
+                            f.write(chunk)
+
+                if output_path.exists() and output_path.stat().st_size > 0:
+                    return str(output_path)
+                else:
+                    raise RuntimeError("Скачанный файл пустой или не существует")
+
+        except asyncio.TimeoutError:
+            raise RuntimeError("Превышен timeout скачивания (2 минуты). Попробуйте другое видео.")
+        except Exception as e:
+            raise RuntimeError(f"Ошибка при скачивании через Cobalt: {str(e)}")
 
     async def download_audio_from_url(self, url: str) -> Optional[str]:
         """
