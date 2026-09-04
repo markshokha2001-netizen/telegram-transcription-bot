@@ -29,6 +29,19 @@ async def handle_link(message: Message):
     if not match:
         return
 
+    # YouTube временно отключен — слишком много блокировок на Render
+    await message.answer(
+        "❌ Извините, скачивание с YouTube временно недоступно.\n\n"
+        "YouTube активно блокирует серверы хостинга (Render).\n\n"
+        "**Решение:**\n"
+        "1. Скачайте аудио с YouTube через бот @VideoDownloadBot\n"
+        "2. Отправьте мне скачанный файл\n"
+        "3. Я сделаю транскрипцию и AI-обработку\n\n"
+        "Или отправьте обычное аудио/видео файлом."
+    )
+    return
+
+    # Код ниже временно отключен
     status_msg = await message.answer("Принял, обрабатываю...")
 
     try:
