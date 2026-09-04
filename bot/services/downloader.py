@@ -13,43 +13,16 @@ class Downloader:
 
     async def download_audio_from_url_youtube(self, url: str) -> Optional[str]:
         """
-        Скачивает аудио с YouTube через Telethon proxy сервис.
-        Сервис использует @hyd_yt_mp3_bot для скачивания.
+        Скачивает аудио с YouTube через встроенный Telethon + @hyd_yt_mp3_bot.
         Возвращает путь к файлу или None при ошибке.
         """
-        youtube_service_url = "https://youtube-proxy-telethon.onrender.com/download"
-
         try:
-            async with aiohttp.ClientSession() as session:
-                # Отправляем запрос на Telethon proxy сервис
-                request_id = uuid.uuid4().hex
-                async with session.post(
-                    youtube_service_url,
-                    json={"url": url, "request_id": request_id},
-                    timeout=aiohttp.ClientTimeout(total=180)
-                ) as response:
+            from bot.services.youtube_telethon import download_from_youtube
 
-                    if response.status != 200:
-                        error_text = await response.text()
-                        raise RuntimeError(f"YouTube сервис вернул ошибку {response.status}: {error_text[:500]}")
+            # Используем встроенный Telethon модуль
+            file_path = await download_from_youtube(url)
+            return file_path
 
-                    # Скачиваем аудиофайл
-                    output_filename = f"{request_id}.mp3"
-                    output_path = self.download_dir / output_filename
-
-                    with open(output_path, 'wb') as f:
-                        async for chunk in response.content.iter_chunked(8192):
-                            f.write(chunk)
-
-                    if output_path.exists() and output_path.stat().st_size > 0:
-                        return str(output_path)
-                    else:
-                        raise RuntimeError("Скачанный файл пустой или не существует")
-
-        except asyncio.TimeoutError:
-            raise RuntimeError("Превышен timeout скачивания (3 минуты). Попробуйте другое видео.")
-        except aiohttp.ClientError as e:
-            raise RuntimeError(f"Ошибка подключения к YouTube сервису: {str(e)}")
         except Exception as e:
             import re
             error_text = str(e)
