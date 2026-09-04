@@ -83,25 +83,30 @@ async def handle_link(message: Message):
         MAX_MESSAGE_LENGTH = 4000  # Оставляем запас для заголовка
 
         if len(transcript) <= MAX_MESSAGE_LENGTH:
-            # Короткий текст — отправляем одним сообщением
+            # Короткий текст — отправляем одним сообщением с кнопками
             await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
         else:
             # Длинный текст — разбиваем на части
-            # Первое сообщение с кнопками
-            first_part = transcript[:MAX_MESSAGE_LENGTH]
-            await message.answer(f"📝 Дословно (часть 1):\n\n{first_part}", reply_markup=keyboard)
-
-            # Остальные части без кнопок
-            remaining = transcript[MAX_MESSAGE_LENGTH:]
-            part_num = 2
+            parts = []
+            remaining = transcript
 
             while remaining:
                 chunk = remaining[:MAX_MESSAGE_LENGTH]
                 remaining = remaining[MAX_MESSAGE_LENGTH:]
-                await message.answer(f"📝 Дословно (часть {part_num}):\n\n{chunk}")
-                part_num += 1
+                parts.append(chunk)
 
-            print(f"[YouTube] Текст разбит на {part_num - 1} частей")
+            # Отправляем все части текста
+            for i, part in enumerate(parts, 1):
+                await message.answer(f"📝 Дословно (часть {i}/{len(parts)}):\n\n{part}")
+
+            # Последнее сообщение с кнопками (без текста, чтобы кнопки были видны)
+            await message.answer(
+                f"✅ Транскрибация завершена ({len(parts)} частей, {len(transcript)} символов)\n\n"
+                f"Используйте кнопки ниже для экспорта или создания конспекта:",
+                reply_markup=keyboard
+            )
+
+            print(f"[YouTube] Текст разбит на {len(parts)} частей")
 
     except Exception as e:
         print(f"[YouTube] Ошибка: {str(e)}")
