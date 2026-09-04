@@ -2,7 +2,7 @@
 Конвертация больших аудиофайлов для Groq API (лимит 25 МБ)
 """
 import os
-import subprocess
+import asyncio
 import logging
 from pathlib import Path
 
@@ -31,37 +31,47 @@ async def compress_audio_if_needed(audio_path: str) -> str:
     compressed_path = audio_file.parent / f"{audio_file.stem}_compressed.mp3"
 
     try:
-        # Сжимаем через ffmpeg (битрейт 64k = ~8 MB на час аудио)
+        # Сжимаем через ffmpeg АСИНХРОННО (битрейт 64k = ~8 MB на час аудио)
         # Это в ~20 раз меньше оригинала, но качество речи сохраняется
-        result = subprocess.run(
-            [
-                "ffmpeg",
-                "-i", str(audio_path),
-                "-ar", "16000",  # Sample rate 16kHz (оптимально для речи)
-                "-ac", "1",  # Mono (стерео не нужно для речи)
-                "-b:a", "64k",  # Битрейт 64 kbps
-                "-y",  # Перезаписать если существует
-                str(compressed_path)
-            ],
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 минут таймаут
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-i", str(audio_path),
+            "-ar", "16000",  # Sample rate 16kHz (оптимально для речи)
+            "-ac", "1",  # Mono (стерео не нужно для речи)
+            "-b:a", "64k",  # Битрейт 64 kbps
+            "-y",  # Перезаписать если существует
+            str(compressed_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
 
-        if result.returncode != 0:
-            logger.error(f"ffmpeg error: {result.stderr}")
-            raise RuntimeError(f"Ошибка конвертации: {result.stderr[:200]}")
+        # Ждём завершения с таймаутом 10 минут
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=600.0
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            raise RuntimeError("Timeout конвертации (10 минут). Файл слишком большой.")
+
+        if process.returncode != 0:
+            error_msg = stderr.decode()
+            logger.error(f"ffmpeg error: {error_msg}")
+            raise RuntimeError(f"Ошибка конвертации: {error_msg[:200]}")
+
+        if not compressed_path.exists():
+            raise RuntimeError("Сжатый файл не создан")
 
         compressed_size_mb = compressed_path.stat().st_size / 1024 / 1024
-        logger.info(f"Compressed: {file_size_mb:.2f} MB → {compressed_size_mb:.2f} MB")
+        logger.info(f"✅ Compressed: {file_size_mb:.2f} MB → {compressed_size_mb:.2f} MB")
 
         # Удаляем оригинал (экономим место)
         os.remove(audio_path)
+        logger.info(f"Deleted original file: {audio_path}")
 
         return str(compressed_path)
 
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Timeout конвертации (5 минут). Файл слишком большой.")
     except FileNotFoundError:
         raise RuntimeError("ffmpeg не найден. Установите ffmpeg для обработки больших файлов.")
     except Exception as e:
