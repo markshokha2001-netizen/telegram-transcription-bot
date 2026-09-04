@@ -33,7 +33,7 @@ async def handle_link(message: Message):
 
     try:
         print(f"[YouTube] Начинаем скачивание через Telethon proxy: {message.text}")
-        await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube через @hyd_yt_mp3_bot...")
+        await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube через @DiggerDigitalBot...")
 
         # Используем Telethon proxy сервис для автоматического скачивания
         audio_path = await downloader.download_audio_from_url_youtube(message.text)
