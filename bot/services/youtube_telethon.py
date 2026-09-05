@@ -163,3 +163,109 @@ async def download_from_youtube(url: str) -> str:
     except Exception as e:
         logger.error(f"[{request_id}] Error: {e}")
         raise RuntimeError(f"Ошибка при скачивании через @{HYD_BOT}: {str(e)}")
+
+
+async def download_video_from_youtube(url: str) -> str:
+    """
+    Скачивает ВИДЕО с YouTube через @hyd_yt_mp3_bot
+
+    Возвращает путь к скачанному файлу
+    """
+    client = await init_telethon()
+
+    if not client or not client.is_connected():
+        raise RuntimeError("Telethon client not connected")
+
+    request_id = str(uuid.uuid4())[:8]
+    logger.info(f"[{request_id}] Downloading VIDEO from YouTube: {url}")
+
+    try:
+        # Отправляем ссылку боту (обычно боты присылают видео, если поддерживают)
+        await client.send_message(HYD_BOT, url)
+        logger.info(f"[{request_id}] Sent URL to @{HYD_BOT}")
+
+        # Ждём ответ от бота (видео файл или документ)
+        download_path = None
+        timeout = 600  # 10 минут таймаут (для больших файлов)
+
+        async def wait_for_video():
+            nonlocal download_path
+
+            logger.info(f"[{request_id}] Waiting for VIDEO response from @{HYD_BOT}...")
+
+            # Запоминаем ID последнего сообщения перед отправкой
+            messages_before = await client.get_messages(HYD_BOT, limit=1)
+            last_message_id = messages_before[0].id if messages_before else 0
+
+            # Активно ждём новое сообщение (проверяем каждые 5 секунд)
+            max_wait_time = timeout
+            check_interval = 5  # секунд между проверками
+            elapsed = 0
+
+            while elapsed < max_wait_time:
+                await asyncio.sleep(check_interval)
+                elapsed += check_interval
+
+                # Проверяем новые сообщения после отправки
+                async for message in client.iter_messages(HYD_BOT, limit=10):
+                    # Пропускаем старые сообщения (до отправки ссылки)
+                    if message.id <= last_message_id:
+                        continue
+
+                    logger.info(f"[{request_id}] Checking message #{message.id}: has_video={bool(message.video)}, has_document={bool(message.document)}, text={message.text[:50] if message.text else 'None'}")
+
+                    # Проверяем, что это видео или документ с видео
+                    if message.video:
+                        logger.info(f"[{request_id}] Found video message")
+                        filename = f"youtube_video_{request_id}.mp4"
+                        download_path = DOWNLOAD_DIR / filename
+
+                        logger.info(f"[{request_id}] Downloading video from @{HYD_BOT}...")
+                        await message.download_media(str(download_path))
+                        logger.info(f"[{request_id}] Video downloaded: {download_path}, size: {download_path.stat().st_size / 1024 / 1024:.2f} MB")
+                        return
+
+                    elif message.document:
+                        logger.info(f"[{request_id}] Found document, mime_type={message.document.mime_type}, size={message.document.size / 1024 / 1024:.2f} MB")
+
+                        # Принимаем видео документы (mp4, avi, mkv и т.д.)
+                        if message.document.mime_type and 'video' in message.document.mime_type:
+                            # Получаем оригинальное расширение файла
+                            file_ext = 'mp4'  # по умолчанию
+                            for attr in message.document.attributes:
+                                if isinstance(attr, DocumentAttributeFilename) and attr.file_name:
+                                    file_ext = attr.file_name.split('.')[-1] if '.' in attr.file_name else 'mp4'
+                                    break
+
+                            filename = f"youtube_video_{request_id}.{file_ext}"
+                            download_path = DOWNLOAD_DIR / filename
+
+                            logger.info(f"[{request_id}] Downloading document (video) from @{HYD_BOT} as {file_ext}...")
+                            await message.download_media(str(download_path))
+                            logger.info(f"[{request_id}] Document downloaded: {download_path}, size: {download_path.stat().st_size / 1024 / 1024:.2f} MB")
+                            return
+
+                        # ВАЖНО: Если бот присылает только аудио, значит он не поддерживает скачивание видео
+                        # В этом случае сообщаем пользователю об этом
+                        elif message.document.mime_type and 'audio' in message.document.mime_type:
+                            raise RuntimeError(f"@{HYD_BOT} не поддерживает скачивание видео, только аудио")
+
+                # Если не нашли, продолжаем ждать
+                logger.info(f"[{request_id}] No video yet, waiting... ({elapsed}/{max_wait_time}s)")
+
+            raise RuntimeError(f"No video file received from @{HYD_BOT}")
+
+        # Ждём с таймаутом
+        try:
+            await asyncio.wait_for(wait_for_video(), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise RuntimeError(f"Timeout: @{HYD_BOT} не ответил за {timeout} секунд")
+
+        if not download_path or not download_path.exists():
+            raise RuntimeError(f"Failed to download video from @{HYD_BOT}")
+
+        return str(download_path)
+
+    except Exception as e:
+        logger.error(f"[{request_id}] Error: {e}")
+        raise RuntimeError(f"Ошибка при скачивании видео через @{HYD_BOT}: {str(e)}")

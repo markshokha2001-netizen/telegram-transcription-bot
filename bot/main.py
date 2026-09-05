@@ -7,7 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from bot.config import TELEGRAM_BOT_TOKEN, USE_LOCAL_API, LOCAL_API_URL, PROXY_URL
-from bot.handlers import media, links, mode_toggle, start
+from bot.handlers import media, links, mode_toggle, menu, downloads
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,7 +82,8 @@ async def main():
 
     dp = Dispatcher()
 
-    dp.include_router(start.router)
+    dp.include_router(menu.router)  # Главное меню (первым!)
+    dp.include_router(downloads.router)  # Скачивание и конвертация (вторым!)
     dp.include_router(mode_toggle.router)
     dp.include_router(media.router)
     dp.include_router(links.router)

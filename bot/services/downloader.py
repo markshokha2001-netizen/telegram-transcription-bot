@@ -29,6 +29,24 @@ class Downloader:
             error_text = re.sub(r'<[^>]+>', '', error_text)
             raise RuntimeError(f"Ошибка при скачивании с YouTube: {error_text[:500]}")
 
+    async def download_video_from_url_youtube(self, url: str) -> Optional[str]:
+        """
+        Скачивает ВИДЕО с YouTube через Telethon + @DiggerDigitalBot.
+        Возвращает путь к файлу или None при ошибке.
+        """
+        try:
+            from bot.services.youtube_telethon import download_video_from_youtube
+
+            # Используем встроенный Telethon модуль для скачивания видео
+            file_path = await download_video_from_youtube(url)
+            return file_path
+
+        except Exception as e:
+            import re
+            error_text = str(e)
+            error_text = re.sub(r'<[^>]+>', '', error_text)
+            raise RuntimeError(f"Ошибка при скачивании видео с YouTube: {error_text[:500]}")
+
     async def download_audio_from_url(self, url: str) -> Optional[str]:
         """
         Скачивает аудиодорожку из видео по ссылке.
