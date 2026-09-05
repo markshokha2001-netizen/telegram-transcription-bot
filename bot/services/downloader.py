@@ -29,17 +29,17 @@ class Downloader:
             error_text = re.sub(r'<[^>]+>', '', error_text)
             raise RuntimeError(f"Ошибка при скачивании с YouTube: {error_text[:500]}")
 
-    async def download_video_from_url_youtube(self, url: str) -> Optional[str]:
+    async def download_video_from_url_youtube(self, url: str):
         """
-        Скачивает ВИДЕО с YouTube через @YTsaveBot.
-        Возвращает путь к файлу или None при ошибке.
+        Получает видео с YouTube через @YTsaveBot и возвращает message object для пересылки.
+        Возвращает кортеж: (message_object, file_size_mb)
         """
         try:
             from bot.services.youtube_telethon import download_video_from_youtube_via_ytsavebot
 
-            # Используем @YTsaveBot через Telethon
-            file_path = await download_video_from_youtube_via_ytsavebot(url)
-            return file_path
+            # Используем @YTsaveBot через Telethon (возвращает message + size)
+            video_message, file_size = await download_video_from_youtube_via_ytsavebot(url)
+            return (video_message, file_size)
 
         except Exception as e:
             import re

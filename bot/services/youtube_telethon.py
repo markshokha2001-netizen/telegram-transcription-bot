@@ -168,9 +168,9 @@ async def download_from_youtube(url: str) -> str:
 
 async def download_video_from_youtube_via_ytsavebot(url: str) -> str:
     """
-    Скачивает ВИДЕО с YouTube через @YTsavebot
+    Получает видео с YouTube через @YTsavebot и возвращает message ID для пересылки.
 
-    Возвращает путь к скачанному файлу
+    Возвращает кортеж: (message_object, file_size_mb)
     """
     client = await init_telethon()
 
@@ -186,12 +186,9 @@ async def download_video_from_youtube_via_ytsavebot(url: str) -> str:
         logger.info(f"[{request_id}] Sent URL to @{YTSAVE_BOT}")
 
         # Ждём ответ от бота (видео файл)
-        download_path = None
         timeout = 600  # 10 минут таймаут (для больших файлов)
 
         async def wait_for_video():
-            nonlocal download_path
-
             logger.info(f"[{request_id}] Waiting for VIDEO response from @{YTSAVE_BOT}...")
 
             # Запоминаем ID последнего сообщения перед отправкой
@@ -217,36 +214,18 @@ async def download_video_from_youtube_via_ytsavebot(url: str) -> str:
 
                     # Проверяем, что это видео или документ с видео
                     if message.video:
-                        logger.info(f"[{request_id}] Found video message")
-                        filename = f"youtube_video_{request_id}.mp4"
-                        download_path = DOWNLOAD_DIR / filename
-
-                        logger.info(f"[{request_id}] Downloading video from @{YTSAVE_BOT}...")
-                        await message.download_media(str(download_path))
-                        file_size = download_path.stat().st_size / 1024 / 1024
-                        logger.info(f"[{request_id}] Video downloaded: {download_path}, size: {file_size:.2f} MB")
-                        return
+                        file_size = message.video.size / 1024 / 1024
+                        logger.info(f"[{request_id}] Found video message, size: {file_size:.2f} MB")
+                        return (message, file_size)
 
                     elif message.document:
                         logger.info(f"[{request_id}] Found document, mime_type={message.document.mime_type}, size={message.document.size / 1024 / 1024:.2f} MB")
 
                         # Принимаем видео документы (mp4, avi, mkv и т.д.)
                         if message.document.mime_type and 'video' in message.document.mime_type:
-                            # Получаем оригинальное расширение файла
-                            file_ext = 'mp4'  # по умолчанию
-                            for attr in message.document.attributes:
-                                if isinstance(attr, DocumentAttributeFilename) and attr.file_name:
-                                    file_ext = attr.file_name.split('.')[-1] if '.' in attr.file_name else 'mp4'
-                                    break
-
-                            filename = f"youtube_video_{request_id}.{file_ext}"
-                            download_path = DOWNLOAD_DIR / filename
-
-                            logger.info(f"[{request_id}] Downloading document (video) from @{YTSAVE_BOT} as {file_ext}...")
-                            await message.download_media(str(download_path))
-                            file_size = download_path.stat().st_size / 1024 / 1024
-                            logger.info(f"[{request_id}] Document downloaded: {download_path}, size: {file_size:.2f} MB")
-                            return
+                            file_size = message.document.size / 1024 / 1024
+                            logger.info(f"[{request_id}] Video document found, size: {file_size:.2f} MB")
+                            return (message, file_size)
 
                 # Если не нашли, продолжаем ждать
                 logger.info(f"[{request_id}] No video yet, waiting... ({elapsed}/{max_wait_time}s)")
@@ -255,14 +234,10 @@ async def download_video_from_youtube_via_ytsavebot(url: str) -> str:
 
         # Ждём с таймаутом
         try:
-            await asyncio.wait_for(wait_for_video(), timeout=timeout)
+            result = await asyncio.wait_for(wait_for_video(), timeout=timeout)
+            return result
         except asyncio.TimeoutError:
             raise RuntimeError(f"Timeout: @{YTSAVE_BOT} не ответил за {timeout} секунд")
-
-        if not download_path or not download_path.exists():
-            raise RuntimeError(f"Failed to download video from @{YTSAVE_BOT}")
-
-        return str(download_path)
 
     except Exception as e:
         logger.error(f"[{request_id}] Error: {e}")

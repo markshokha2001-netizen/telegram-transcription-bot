@@ -51,47 +51,22 @@ async def handle_youtube_download_link(message: Message):
         logger.info(f"[Download] Starting video download: {message.text}")
         logger.info(f"[Download] User mode: {current_mode}")
 
-        # Используем yt-dlp для скачивания видео
-        video_path = await downloader.download_video_from_url_youtube(message.text)
+        # Получаем видео через @YTsaveBot (возвращает message object для пересылки)
+        video_message, file_size = await downloader.download_video_from_url_youtube(message.text)
 
-        if not video_path:
-            raise RuntimeError("Не удалось скачать видео")
+        logger.info(f"[Download] Video received from bot, size: {file_size:.2f} MB")
 
-        logger.info(f"[Download] Video downloaded: {video_path}")
-
-        # Проверяем размер
-        file_size = os.path.getsize(video_path) / (1024 * 1024)  # МБ
-
-        # Telegram Bot API лимит: 50 МБ для отправки файлов
-        if file_size > 50:
-            await status_msg.edit_text(
-                f"❌ Видео слишком большое ({file_size:.1f} МБ)\n\n"
-                f"Telegram Bot API лимит: 50 МБ\n\n"
-                f"💡 Попробуйте:\n"
-                f"• Более короткое видео\n"
-                f"• Используйте \"🎬 Транскрибация YouTube\" (только аудио, ~15 МБ)"
-            )
-            downloader.cleanup(video_path)
-            # Сбрасываем режим
-            user_modes[user_id] = None
-            return
-
-        # Отправляем видео
+        # Пересылаем видео пользователю (обходит лимит 50 МБ!)
         await status_msg.edit_text(f"📤 Отправляю видео ({file_size:.1f} МБ)...")
 
-        file = FSInputFile(video_path)
-        await message.answer_document(
-            file,
-            caption=f"📥 Видео с YouTube ({file_size:.1f} МБ)",
-            reply_markup=get_main_menu()
+        # Пересылаем через aiogram
+        await message.bot.forward_message(
+            chat_id=message.chat.id,
+            from_chat_id=video_message.chat_id,
+            message_id=video_message.id
         )
 
         await status_msg.delete()
-
-        # Удаляем файл после отправки
-        import asyncio
-        await asyncio.sleep(2)
-        downloader.cleanup(video_path)
 
         # Сбрасываем режим
         user_modes[user_id] = None
