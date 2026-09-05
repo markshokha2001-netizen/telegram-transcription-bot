@@ -31,21 +31,44 @@ class Downloader:
 
     async def download_video_from_url_youtube(self, url: str) -> Optional[str]:
         """
-        Скачивает ВИДЕО с YouTube через Telethon + @DiggerDigitalBot.
+        Скачивает ВИДЕО с YouTube через yt-dlp.
         Возвращает путь к файлу или None при ошибке.
         """
+        output_template = str(self.download_dir / "youtube_video_%(id)s.%(ext)s")
+
+        cmd = [
+            "yt-dlp",
+            "--format", "best[ext=mp4]/best",  # Лучшее качество MP4 или любое лучшее
+            "--output", output_template,
+            "--no-playlist",
+            url
+        ]
+
+        async def _download():
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+
+            if process.returncode != 0:
+                error_msg = stderr.decode('utf-8', errors='ignore')
+                raise RuntimeError(f"yt-dlp failed: {error_msg}")
+
+            # Находим скачанный файл
+            for file in self.download_dir.glob("youtube_video_*"):
+                return str(file)
+
+            raise RuntimeError("Video file not found after download")
+
         try:
-            from bot.services.youtube_telethon import download_video_from_youtube
-
-            # Используем встроенный Telethon модуль для скачивания видео
-            file_path = await download_video_from_youtube(url)
+            file_path = await asyncio.wait_for(_download(), timeout=600.0)  # 10 минут таймаут
             return file_path
-
+        except asyncio.TimeoutError:
+            raise RuntimeError("Download timeout (10 minutes)")
         except Exception as e:
-            import re
-            error_text = str(e)
-            error_text = re.sub(r'<[^>]+>', '', error_text)
-            raise RuntimeError(f"Ошибка при скачивании видео с YouTube: {error_text[:500]}")
+            raise RuntimeError(f"Ошибка при скачивании видео: {str(e)}")
 
     async def download_audio_from_url(self, url: str) -> Optional[str]:
         """
