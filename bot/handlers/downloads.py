@@ -62,10 +62,14 @@ async def handle_youtube_download_link(message: Message):
         # Проверяем размер
         file_size = os.path.getsize(video_path) / (1024 * 1024)  # МБ
 
-        if file_size > 200:
+        # Telegram Bot API лимит: 50 МБ для отправки файлов
+        if file_size > 50:
             await status_msg.edit_text(
                 f"❌ Видео слишком большое ({file_size:.1f} МБ)\n\n"
-                f"Максимальный размер: 200 МБ"
+                f"Telegram Bot API лимит: 50 МБ\n\n"
+                f"💡 Попробуйте:\n"
+                f"• Более короткое видео\n"
+                f"• Используйте \"🎬 Транскрибация YouTube\" (только аудио, ~15 МБ)"
             )
             downloader.cleanup(video_path)
             # Сбрасываем режим
