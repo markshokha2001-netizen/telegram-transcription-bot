@@ -5,9 +5,11 @@ from aiogram import Router, F
 from aiogram.types import Message, FSInputFile
 from bot.services.downloader import Downloader
 from bot.handlers.menu import get_main_menu
+import logging
 
 router = Router()
 downloader = Downloader()
+logger = logging.getLogger(__name__)
 
 # Регулярка для YouTube
 URL_REGEX = re.compile(
@@ -26,7 +28,12 @@ async def handle_youtube_download_link(message: Message):
 
     # Проверяем, находится ли пользователь в режиме скачивания
     user_id = message.from_user.id
-    if user_modes.get(user_id) != "download_youtube":
+    current_mode = user_modes.get(user_id)
+
+    logger.info(f"[Download] Received text from user {user_id}, mode: {current_mode}, text: {message.text[:50]}")
+
+    if current_mode != "download_youtube":
+        logger.info(f"[Download] Ignoring - user not in download_youtube mode")
         return  # Не наш режим
 
     if not message.text:
@@ -35,20 +42,22 @@ async def handle_youtube_download_link(message: Message):
     match = URL_REGEX.search(message.text)
     if not match:
         await message.answer("❌ Это не похоже на ссылку YouTube. Попробуйте ещё раз.")
+        logger.warning(f"[Download] Invalid YouTube URL: {message.text}")
         return
 
-    status_msg = await message.answer("📥 Скачиваю видео с YouTube...")
+    status_msg = await message.answer("📥 Скачиваю видео с YouTube через yt-dlp...")
 
     try:
-        print(f"[Download] Начинаем скачивание видео: {message.text}")
+        logger.info(f"[Download] Starting video download: {message.text}")
+        logger.info(f"[Download] User mode: {current_mode}")
 
-        # Используем Telethon + @DiggerDigitalBot для скачивания
+        # Используем yt-dlp для скачивания видео
         video_path = await downloader.download_video_from_url_youtube(message.text)
 
         if not video_path:
             raise RuntimeError("Не удалось скачать видео")
 
-        print(f"[Download] Видео скачано: {video_path}")
+        logger.info(f"[Download] Video downloaded: {video_path}")
 
         # Проверяем размер
         file_size = os.path.getsize(video_path) / (1024 * 1024)  # МБ
@@ -104,10 +113,16 @@ async def handle_video_to_audio(message: Message):
 
     # Проверяем, находится ли пользователь в режиме конвертации
     user_id = message.from_user.id
-    if user_modes.get(user_id) != "video_to_audio":
+    current_mode = user_modes.get(user_id)
+
+    logger.info(f"[VideoToAudio] Received video from user {user_id}, mode: {current_mode}")
+
+    if current_mode != "video_to_audio":
+        logger.info(f"[VideoToAudio] Ignoring - user not in video_to_audio mode")
         return  # Не наш режим
 
     status_msg = await message.answer("🔄 Конвертирую видео в аудио...")
+    logger.info(f"[VideoToAudio] Starting conversion for user {user_id}")
 
     try:
         # Скачиваем видео
