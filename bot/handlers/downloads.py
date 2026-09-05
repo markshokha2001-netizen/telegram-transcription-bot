@@ -98,8 +98,8 @@ async def handle_youtube_download_link(message: Message):
         )
 
     except Exception as e:
-        await message.answer(f"❌ Ошибка при скачивании: {str(e)}")
-        print(f"[Download] Ошибка: {str(e)}")
+        await message.answer(f"❌ Ошибка при скачивании: {str(e).replace('<', '').replace('>', '')}")
+        logger.error(f"[Download] Error: {e}")
         import traceback
         traceback.print_exc()
         # Сбрасываем режим

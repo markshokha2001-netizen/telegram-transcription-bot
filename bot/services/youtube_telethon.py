@@ -17,8 +17,9 @@ API_ID = int(os.getenv("TELEGRAM_API_ID", "38923554"))
 API_HASH = os.getenv("TELEGRAM_API_HASH", "bd666a5f2fc702fed3e7c32bc411a696")
 PHONE = os.getenv("TELEGRAM_PHONE", "+79113583410")
 
-# Bot username
-HYD_BOT = "DiggerDigitalBot"
+# Bot usernames
+HYD_BOT = "DiggerDigitalBot"  # Для скачивания аудио
+YTSAVE_BOT = "YTsavebot"  # Для скачивания видео
 
 # Download directory
 DOWNLOAD_DIR = Path("downloads")
@@ -165,9 +166,9 @@ async def download_from_youtube(url: str) -> str:
         raise RuntimeError(f"Ошибка при скачивании через @{HYD_BOT}: {str(e)}")
 
 
-async def download_video_from_youtube(url: str) -> str:
+async def download_video_from_youtube_via_ytsavebot(url: str) -> str:
     """
-    Скачивает ВИДЕО с YouTube через @hyd_yt_mp3_bot
+    Скачивает ВИДЕО с YouTube через @YTsavebot
 
     Возвращает путь к скачанному файлу
     """
@@ -177,24 +178,24 @@ async def download_video_from_youtube(url: str) -> str:
         raise RuntimeError("Telethon client not connected")
 
     request_id = str(uuid.uuid4())[:8]
-    logger.info(f"[{request_id}] Downloading VIDEO from YouTube: {url}")
+    logger.info(f"[{request_id}] Downloading VIDEO from YouTube via @{YTSAVE_BOT}: {url}")
 
     try:
-        # Отправляем ссылку боту (обычно боты присылают видео, если поддерживают)
-        await client.send_message(HYD_BOT, url)
-        logger.info(f"[{request_id}] Sent URL to @{HYD_BOT}")
+        # Отправляем ссылку боту
+        await client.send_message(YTSAVE_BOT, url)
+        logger.info(f"[{request_id}] Sent URL to @{YTSAVE_BOT}")
 
-        # Ждём ответ от бота (видео файл или документ)
+        # Ждём ответ от бота (видео файл)
         download_path = None
         timeout = 600  # 10 минут таймаут (для больших файлов)
 
         async def wait_for_video():
             nonlocal download_path
 
-            logger.info(f"[{request_id}] Waiting for VIDEO response from @{HYD_BOT}...")
+            logger.info(f"[{request_id}] Waiting for VIDEO response from @{YTSAVE_BOT}...")
 
             # Запоминаем ID последнего сообщения перед отправкой
-            messages_before = await client.get_messages(HYD_BOT, limit=1)
+            messages_before = await client.get_messages(YTSAVE_BOT, limit=1)
             last_message_id = messages_before[0].id if messages_before else 0
 
             # Активно ждём новое сообщение (проверяем каждые 5 секунд)
@@ -207,7 +208,7 @@ async def download_video_from_youtube(url: str) -> str:
                 elapsed += check_interval
 
                 # Проверяем новые сообщения после отправки
-                async for message in client.iter_messages(HYD_BOT, limit=10):
+                async for message in client.iter_messages(YTSAVE_BOT, limit=10):
                     # Пропускаем старые сообщения (до отправки ссылки)
                     if message.id <= last_message_id:
                         continue
@@ -220,9 +221,10 @@ async def download_video_from_youtube(url: str) -> str:
                         filename = f"youtube_video_{request_id}.mp4"
                         download_path = DOWNLOAD_DIR / filename
 
-                        logger.info(f"[{request_id}] Downloading video from @{HYD_BOT}...")
+                        logger.info(f"[{request_id}] Downloading video from @{YTSAVE_BOT}...")
                         await message.download_media(str(download_path))
-                        logger.info(f"[{request_id}] Video downloaded: {download_path}, size: {download_path.stat().st_size / 1024 / 1024:.2f} MB")
+                        file_size = download_path.stat().st_size / 1024 / 1024
+                        logger.info(f"[{request_id}] Video downloaded: {download_path}, size: {file_size:.2f} MB")
                         return
 
                     elif message.document:
@@ -240,32 +242,28 @@ async def download_video_from_youtube(url: str) -> str:
                             filename = f"youtube_video_{request_id}.{file_ext}"
                             download_path = DOWNLOAD_DIR / filename
 
-                            logger.info(f"[{request_id}] Downloading document (video) from @{HYD_BOT} as {file_ext}...")
+                            logger.info(f"[{request_id}] Downloading document (video) from @{YTSAVE_BOT} as {file_ext}...")
                             await message.download_media(str(download_path))
-                            logger.info(f"[{request_id}] Document downloaded: {download_path}, size: {download_path.stat().st_size / 1024 / 1024:.2f} MB")
+                            file_size = download_path.stat().st_size / 1024 / 1024
+                            logger.info(f"[{request_id}] Document downloaded: {download_path}, size: {file_size:.2f} MB")
                             return
-
-                        # ВАЖНО: Если бот присылает только аудио, значит он не поддерживает скачивание видео
-                        # В этом случае сообщаем пользователю об этом
-                        elif message.document.mime_type and 'audio' in message.document.mime_type:
-                            raise RuntimeError(f"@{HYD_BOT} не поддерживает скачивание видео, только аудио")
 
                 # Если не нашли, продолжаем ждать
                 logger.info(f"[{request_id}] No video yet, waiting... ({elapsed}/{max_wait_time}s)")
 
-            raise RuntimeError(f"No video file received from @{HYD_BOT}")
+            raise RuntimeError(f"No video file received from @{YTSAVE_BOT}")
 
         # Ждём с таймаутом
         try:
             await asyncio.wait_for(wait_for_video(), timeout=timeout)
         except asyncio.TimeoutError:
-            raise RuntimeError(f"Timeout: @{HYD_BOT} не ответил за {timeout} секунд")
+            raise RuntimeError(f"Timeout: @{YTSAVE_BOT} не ответил за {timeout} секунд")
 
         if not download_path or not download_path.exists():
-            raise RuntimeError(f"Failed to download video from @{HYD_BOT}")
+            raise RuntimeError(f"Failed to download video from @{YTSAVE_BOT}")
 
         return str(download_path)
 
     except Exception as e:
         logger.error(f"[{request_id}] Error: {e}")
-        raise RuntimeError(f"Ошибка при скачивании видео через @{HYD_BOT}: {str(e)}")
+        raise RuntimeError(f"Ошибка при скачивании видео через @{YTSAVE_BOT}: {str(e)}")
