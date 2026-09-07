@@ -29,6 +29,14 @@ async def handle_link(message: Message):
     if not match:
         return
 
+    # Проверяем режим пользователя — игнорируем, если в режиме скачивания
+    from bot.handlers.downloads import user_modes
+    user_id = message.from_user.id
+    current_mode = user_modes.get(user_id)
+
+    if current_mode == "download_youtube":
+        return  # Пусть обработает downloads.py
+
     status_msg = await message.answer("Принял, обрабатываю...")
 
     try:
