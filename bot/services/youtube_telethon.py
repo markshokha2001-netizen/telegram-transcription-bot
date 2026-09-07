@@ -36,10 +36,21 @@ async def init_telethon():
     if _telethon_client and _telethon_client.is_connected():
         return _telethon_client
 
-    session_path = Path(__file__).parent.parent.parent / "session.session"
-
     try:
-        _telethon_client = TelegramClient(str(session_path), API_ID, API_HASH)
+        # Используем StringSession из переменной окружения (если есть)
+        session_string = os.getenv("TELEGRAM_SESSION")
+
+        if session_string:
+            # Используем StringSession (не требует повторной авторизации)
+            from telethon.sessions import StringSession
+            _telethon_client = TelegramClient(StringSession(session_string), API_ID, API_HASH)
+            logger.info("📱 Using StringSession from environment variable")
+        else:
+            # Fallback: файловая сессия (только для локальной разработки)
+            session_path = Path(__file__).parent.parent.parent / "session.session"
+            _telethon_client = TelegramClient(str(session_path), API_ID, API_HASH)
+            logger.info("📁 Using file session (local development)")
+
         await _telethon_client.start(phone=PHONE)
         logger.info("✅ Telethon client started successfully")
 
@@ -53,29 +64,8 @@ async def init_telethon():
 
         return _telethon_client
     except Exception as e:
-        # Если ошибка "AuthKeyDuplicated" — удаляем сессию и пересоздаём
-        if "AuthKeyDuplicatedError" in str(type(e).__name__) or "used under two different IP" in str(e):
-            logger.warning(f"⚠️ Session conflict detected, recreating session file...")
-
-            # Закрываем клиент если открыт
-            if _telethon_client:
-                try:
-                    await _telethon_client.disconnect()
-                except:
-                    pass
-
-            # Удаляем старую сессию
-            if session_path.exists():
-                session_path.unlink()
-                logger.info("🗑️ Deleted old session file")
-
-            # Пересоздаём клиент с новой сессией
-            _telethon_client = TelegramClient(str(session_path), API_ID, API_HASH)
-            await _telethon_client.start(phone=PHONE)
-            logger.info("✅ Telethon client recreated successfully")
-            return _telethon_client
-
         logger.error(f"❌ Failed to start Telethon client: {e}")
+        logger.error(f"💡 Hint: Set TELEGRAM_SESSION environment variable with StringSession")
         raise
 
 
