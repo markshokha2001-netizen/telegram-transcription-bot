@@ -83,10 +83,10 @@ async def main():
     dp = Dispatcher()
 
     dp.include_router(menu.router)  # Главное меню (первым!)
-    dp.include_router(downloads.router)  # Скачивание и конвертация (вторым!)
+    dp.include_router(links.router)  # Транскрибация YouTube (вторым!)
+    dp.include_router(downloads.router)  # Скачивание и конвертация (третьим!)
     dp.include_router(mode_toggle.router)
     dp.include_router(media.router)
-    dp.include_router(links.router)
 
     # Start health check server for Render (runs in background)
     asyncio.create_task(start_health_server())
