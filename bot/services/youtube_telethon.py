@@ -168,9 +168,9 @@ async def download_from_youtube(url: str) -> str:
 
 async def download_video_from_youtube_via_ytsavebot(url: str) -> str:
     """
-    Получает видео с YouTube через @YTsavebot и возвращает message ID для пересылки.
+    Получает видео с YouTube через @YTsavebot и возвращает данные для пересылки.
 
-    Возвращает кортеж: (message_object, file_size_mb)
+    Возвращает кортеж: (from_chat_id, message_id, file_size_mb)
     """
     client = await init_telethon()
 
@@ -181,6 +181,11 @@ async def download_video_from_youtube_via_ytsavebot(url: str) -> str:
     logger.info(f"[{request_id}] Downloading VIDEO from YouTube via @{YTSAVE_BOT}: {url}")
 
     try:
+        # Получаем entity @YTsavebot для получения chat_id
+        ytsave_entity = await client.get_entity(YTSAVE_BOT)
+        ytsave_chat_id = ytsave_entity.id
+        logger.info(f"[{request_id}] @{YTSAVE_BOT} chat_id: {ytsave_chat_id}")
+
         # Отправляем ссылку боту
         await client.send_message(YTSAVE_BOT, url)
         logger.info(f"[{request_id}] Sent URL to @{YTSAVE_BOT}")
@@ -216,7 +221,8 @@ async def download_video_from_youtube_via_ytsavebot(url: str) -> str:
                     if message.video:
                         file_size = message.video.size / 1024 / 1024
                         logger.info(f"[{request_id}] Found video message, size: {file_size:.2f} MB")
-                        return (message, file_size)
+                        # Возвращаем chat_id (числовой), message_id и размер
+                        return (ytsave_chat_id, message.id, file_size)
 
                     elif message.document:
                         logger.info(f"[{request_id}] Found document, mime_type={message.document.mime_type}, size={message.document.size / 1024 / 1024:.2f} MB")
@@ -225,7 +231,8 @@ async def download_video_from_youtube_via_ytsavebot(url: str) -> str:
                         if message.document.mime_type and 'video' in message.document.mime_type:
                             file_size = message.document.size / 1024 / 1024
                             logger.info(f"[{request_id}] Video document found, size: {file_size:.2f} MB")
-                            return (message, file_size)
+                            # Возвращаем chat_id (числовой), message_id и размер
+                            return (ytsave_chat_id, message.id, file_size)
 
                 # Если не нашли, продолжаем ждать
                 logger.info(f"[{request_id}] No video yet, waiting... ({elapsed}/{max_wait_time}s)")

@@ -51,19 +51,19 @@ async def handle_youtube_download_link(message: Message):
         logger.info(f"[Download] Starting video download: {message.text}")
         logger.info(f"[Download] User mode: {current_mode}")
 
-        # Получаем видео через @YTsaveBot (возвращает message object для пересылки)
-        video_message, file_size = await downloader.download_video_from_url_youtube(message.text)
+        # Получаем видео через @YTsaveBot (возвращает chat_id, message_id, size)
+        from_chat_id, video_message_id, file_size = await downloader.download_video_from_url_youtube(message.text)
 
         logger.info(f"[Download] Video received from bot, size: {file_size:.2f} MB")
 
         # Пересылаем видео пользователю (обходит лимит 50 МБ!)
         await status_msg.edit_text(f"📤 Отправляю видео ({file_size:.1f} МБ)...")
 
-        # Пересылаем через aiogram
+        # Пересылаем через aiogram с правильным числовым chat_id
         await message.bot.forward_message(
             chat_id=message.chat.id,
-            from_chat_id=video_message.chat_id,
-            message_id=video_message.id
+            from_chat_id=from_chat_id,
+            message_id=video_message_id
         )
 
         await status_msg.delete()
