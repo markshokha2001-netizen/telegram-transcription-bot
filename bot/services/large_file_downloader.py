@@ -15,6 +15,9 @@ API_ID = int(os.getenv("TELEGRAM_API_ID", "38923554"))
 API_HASH = os.getenv("TELEGRAM_API_HASH", "bd666a5f2fc702fed3e7c32bc411a696")
 PHONE = os.getenv("TELEGRAM_PHONE", "+79113583410")
 
+# ID владельца бота (для пересылки больших файлов)
+OWNER_USER_ID = int(os.getenv("OWNER_USER_ID", "6048223351"))  # Ваш Telegram user ID
+
 # Download directory
 DOWNLOAD_DIR = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
@@ -55,9 +58,9 @@ async def download_large_file_via_forward(bot, message, file_extension: str = "t
     Скачивает большой файл через Telethon Client API (обход лимита Bot API в 50 МБ)
 
     Алгоритм:
-    1. Bot пересылает файл себе в Saved Messages
-    2. Telethon (личный аккаунт) получает доступ к боту
-    3. Telethon скачивает файл из Saved Messages бота (без лимитов)
+    1. Bot пересылает файл владельцу (в Saved Messages Telethon-аккаунта)
+    2. Telethon скачивает файл из своих Saved Messages (без лимитов)
+    3. Telethon удаляет пересланное сообщение (cleanup)
 
     Args:
         bot: aiogram Bot instance
@@ -74,30 +77,27 @@ async def download_large_file_via_forward(bot, message, file_extension: str = "t
         raise RuntimeError("Telethon client not connected")
 
     try:
-        logger.info(f"🔽 Downloading large file via forward hack: size={file_size_mb:.1f} MB")
+        logger.info(f"🔽 Downloading large file via forward to owner: size={file_size_mb:.1f} MB")
 
-        # Шаг 1: Бот пересылает файл себе в Saved Messages
-        bot_info = await bot.get_me()
-        bot_id = bot_info.id
-
-        logger.info(f"📤 Forwarding message to bot's Saved Messages (bot_id={bot_id})...")
+        # Шаг 1: Бот пересылает файл владельцу (вашему личному аккаунту)
+        logger.info(f"📤 Forwarding message to owner (user_id={OWNER_USER_ID})...")
         forwarded = await bot.forward_message(
-            chat_id=bot_id,  # Бот отправляет себе
+            chat_id=OWNER_USER_ID,  # Бот пересылает вам
             from_chat_id=message.chat.id,
             message_id=message.message_id
         )
 
-        logger.info(f"✅ Message forwarded to bot, new message_id={forwarded.message_id}")
+        logger.info(f"✅ Message forwarded to owner, new message_id={forwarded.message_id}")
 
-        # Шаг 2: Telethon получает доступ к боту и скачивает файл
+        # Шаг 2: Telethon (ваш аккаунт) получает доступ к пересланному файлу в своих сообщениях
         import asyncio
-        await asyncio.sleep(1)  # Даём время на доставку сообщения
+        await asyncio.sleep(2)  # Даём время на доставку сообщения
 
-        logger.info(f"🔍 Telethon: getting messages from bot {bot_id}...")
+        logger.info(f"🔍 Telethon: getting messages from 'me' (Saved Messages)...")
 
-        # Получаем последние сообщения от бота (ищем наш файл)
-        async for msg in client.iter_messages(bot_id, limit=5):
-            if msg.id == forwarded.message_id or (msg.media and hasattr(msg.media, 'document')):
+        # Получаем последние сообщения из Saved Messages (ищем наш файл)
+        async for msg in client.iter_messages('me', limit=10):
+            if msg.id == forwarded.message_id or (msg.media and (msg.audio or msg.video or msg.document)):
                 logger.info(f"✅ Found message with media: msg_id={msg.id}")
 
                 # Определяем путь для сохранения
@@ -115,16 +115,16 @@ async def download_large_file_via_forward(bot, message, file_extension: str = "t
                 downloaded_size_mb = output_path.stat().st_size / 1024 / 1024
                 logger.info(f"✅ Large file downloaded: {downloaded_size_mb:.2f} MB")
 
-                # Удаляем пересланное сообщение из Saved Messages бота
+                # Удаляем пересланное сообщение из Saved Messages
                 try:
-                    await bot.delete_message(chat_id=bot_id, message_id=forwarded.message_id)
-                    logger.info("🗑️ Deleted forwarded message from bot's Saved Messages")
+                    await client.delete_messages('me', msg.id)
+                    logger.info("🗑️ Deleted forwarded message from Saved Messages")
                 except:
-                    pass  # Не критично, если не удалось удалить
+                    pass  # Не критично
 
                 return str(output_path)
 
-        raise RuntimeError("File not found in bot's messages")
+        raise RuntimeError("File not found in owner's messages")
 
     except Exception as e:
         logger.error(f"❌ Error downloading large file: {e}")
