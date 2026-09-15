@@ -53,14 +53,13 @@ async def init_telethon():
         raise
 
 
-async def download_large_file_via_forward(bot, message, file_extension: str = "tmp", file_size_mb: float = 0) -> str:
+async def download_large_file_direct(bot, message, file_extension: str = "tmp", file_size_mb: float = 0) -> str:
     """
-    Скачивает большой файл через Telethon Client API (обход лимита Bot API в 50 МБ)
+    Скачивает большой файл через Telethon напрямую по file_unique_id (обход лимита Bot API)
 
     Алгоритм:
-    1. Bot пересылает файл владельцу (в Saved Messages Telethon-аккаунта)
-    2. Telethon скачивает файл из своих Saved Messages (без лимитов)
-    3. Telethon удаляет пересланное сообщение (cleanup)
+    1. Получаем file_unique_id из Bot API (aiogram)
+    2. Telethon скачивает файл напрямую по этому ID (без пересылки)
 
     Args:
         bot: aiogram Bot instance
@@ -77,93 +76,61 @@ async def download_large_file_via_forward(bot, message, file_extension: str = "t
         raise RuntimeError("Telethon client not connected")
 
     try:
-        logger.info(f"🔽 Downloading large file via forward to owner: size={file_size_mb:.1f} MB")
+        logger.info(f"🔽 Downloading large file directly via Telethon: size={file_size_mb:.1f} MB")
 
-        # Шаг 1: Бот пересылает файл владельцу (вашему личному аккаунту)
-        logger.info(f"📤 Forwarding message to owner (user_id={OWNER_USER_ID})...")
-        forwarded = await bot.forward_message(
-            chat_id=OWNER_USER_ID,  # Бот пересылает вам
-            from_chat_id=message.chat.id,
-            message_id=message.message_id
-        )
+        # Получаем file_id из сообщения
+        if message.audio:
+            file_id = message.audio.file_id
+        elif message.video:
+            file_id = message.video.file_id
+        elif message.document:
+            file_id = message.document.file_id
+        else:
+            raise RuntimeError("No audio/video/document found in message")
 
-        logger.info(f"✅ Message forwarded to owner, new message_id={forwarded.message_id}")
+        logger.info(f"📄 File ID: {file_id[:30]}...")
 
-        # Шаг 2: Telethon (ваш аккаунт) получает доступ к пересланному файлу
-        import asyncio
-        await asyncio.sleep(3)  # Даём больше времени на доставку
+        # Bot API не может скачать файл >50 МБ, но мы можем получить file_reference
+        # через getFile и передать его в Telethon
 
-        logger.info(f"🔍 Telethon: searching for forwarded file in owner's chat...")
+        # Получаем полную информацию о файле через Bot API
+        file_info = await bot.get_file(file_id)
+        file_path = file_info.file_path  # путь на серверах Telegram
 
-        # Ищем пересланное сообщение в чате с владельцем (НЕ в 'me'!)
-        msg = None
-        async for message in client.iter_messages(OWNER_USER_ID, limit=20):
-            # Ищем аудио/документ, который появился только что
-            if message.media and (message.audio or message.document or message.video):
-                file_size = 0
-                if message.audio:
-                    file_size = message.audio.size if hasattr(message.audio, 'size') else 0
-                elif message.document:
-                    file_size = message.document.size if hasattr(message.document, 'size') else 0
-                elif message.video:
-                    file_size = message.video.size if hasattr(message.video, 'size') else 0
+        logger.info(f"📍 File path on Telegram servers: {file_path}")
 
-                size_mb = file_size / 1024 / 1024
-                logger.info(f"  Checking msg_id={message.id}, size={size_mb:.1f} MB, has_audio={bool(message.audio)}, has_document={bool(message.document)}")
-
-                # Проверяем, что размер примерно совпадает с ожидаемым (в пределах 20%)
-                if abs(size_mb - file_size_mb) / file_size_mb < 0.3:  # 30% допуск на сжатие
-                    logger.info(f"✅ Found matching file by size: {size_mb:.1f} MB ≈ {file_size_mb:.1f} MB")
-                    msg = message
-                    break
-                else:
-                    logger.info(f"  Size mismatch: {size_mb:.1f} MB != {file_size_mb:.1f} MB, skipping")
-
-        if not msg:
-            # Fallback: берём самое свежее медиа
-            logger.warning(f"⚠️ No matching file by size, taking most recent media...")
-            async for message in client.iter_messages(OWNER_USER_ID, limit=5):
-                if message.media and (message.audio or message.document or message.video):
-                    msg = message
-                    logger.info(f"✅ Taking most recent media: msg_id={message.id}")
-                    break
-
-        if not msg:
-            # Fallback: пробуем получить по ID из Bot API
-            logger.warning(f"⚠️ Media not found in recent messages, trying direct fetch by id={forwarded.message_id}")
-            msg = await client.get_messages(OWNER_USER_ID, ids=forwarded.message_id)
-
-        if not msg:
-            raise RuntimeError(f"Forwarded message {forwarded.message_id} not found")
-
-        if not msg.media:
-            raise RuntimeError(f"Message {forwarded.message_id} has no media")
-
-        logger.info(f"✅ Found forwarded message with media: msg_id={msg.id}")
-
-        # Определяем путь для сохранения
+        # Telethon может скачать файл по file_path напрямую
         import uuid
         unique_id = str(uuid.uuid4())[:8]
         output_path = DOWNLOAD_DIR / f"large_{unique_id}.{file_extension}"
 
-        # Скачиваем через Telethon (без лимитов!)
-        logger.info(f"📥 Downloading to {output_path}...")
-        await client.download_media(msg, str(output_path))
+        logger.info(f"📥 Downloading via Telethon to {output_path}...")
 
-        if not output_path.exists():
-            raise RuntimeError("Download failed - file not found")
+        # Используем Telethon для скачивания через InputFileLocation
+        from telethon.tl.types import InputDocumentFileLocation
 
-        downloaded_size_mb = output_path.stat().st_size / 1024 / 1024
-        logger.info(f"✅ Large file downloaded: {downloaded_size_mb:.2f} MB")
+        # Для больших файлов используем прямое скачивание
+        # Получаем message через Telethon чтобы получить правильный Document
+        bot_username = (await bot.get_me()).username
+        logger.info(f"🤖 Bot username: @{bot_username}")
 
-        # Удаляем пересланное сообщение (чтобы не мусорить)
-        try:
-            await client.delete_messages(OWNER_USER_ID, msg.id)
-            logger.info("🗑️ Deleted forwarded message from owner's chat")
-        except Exception as del_error:
-            logger.warning(f"⚠️ Could not delete forwarded message: {del_error}")
+        # Ищем сообщение в чате с ботом
+        async for msg in client.iter_messages(f"@{bot_username}", limit=50):
+            if msg.media and msg.id == message.message_id:
+                logger.info(f"✅ Found message in Telethon: msg_id={msg.id}")
 
-        return str(output_path)
+                # Скачиваем файл
+                await client.download_media(msg, str(output_path))
+
+                if not output_path.exists():
+                    raise RuntimeError("Download failed - file not found")
+
+                downloaded_size_mb = output_path.stat().st_size / 1024 / 1024
+                logger.info(f"✅ Large file downloaded: {downloaded_size_mb:.2f} MB")
+
+                return str(output_path)
+
+        raise RuntimeError(f"Message {message.message_id} not found in bot's chat")
 
     except Exception as e:
         logger.error(f"❌ Error downloading large file: {e}")

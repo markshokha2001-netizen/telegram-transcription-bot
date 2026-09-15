@@ -6,7 +6,7 @@ from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyb
 from bot.services.downloader import Downloader
 from bot.services.groq_transcriber import GroqTranscriber
 from bot.services.export import Exporter
-from bot.services.large_file_downloader import download_large_file_via_forward
+from bot.services.large_file_downloader import download_large_file_direct
 import logging
 
 router = Router()
@@ -134,7 +134,7 @@ async def handle_audio(message: Message):
                 f"Файл большой ({file_size_mb:.1f} МБ)\n"
                 f"📥 Скачиваю через Telethon Client API (без лимитов)..."
             )
-            file_path = await download_large_file_via_forward(
+            file_path = await download_large_file_direct(
                 bot=message.bot,
                 message=message,
                 file_extension=file_extension.lstrip('.'),
@@ -196,7 +196,7 @@ async def handle_video(message: Message):
                 f"Файл большой ({file_size_mb:.1f} МБ)\n"
                 f"📥 Скачиваю через Telethon Client API (без лимитов)..."
             )
-            video_path = await download_large_file_via_forward(
+            video_path = await download_large_file_direct(
                 bot=message.bot,
                 message=message,
                 file_extension='mp4',
