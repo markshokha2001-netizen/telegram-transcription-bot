@@ -70,8 +70,17 @@ async def download_large_file(chat_id: int, message_id: int, file_extension: str
     try:
         logger.info(f"🔽 Downloading large file via Telethon: chat_id={chat_id}, msg_id={message_id}")
 
+        # Сначала получаем entity чата (для корректной работы с ID)
+        try:
+            peer = await client.get_input_entity(chat_id)
+            logger.info(f"✅ Got peer entity for chat {chat_id}")
+        except Exception as e:
+            logger.error(f"❌ Failed to get entity for chat {chat_id}: {e}")
+            # Fallback: пробуем напрямую получить сообщение
+            peer = chat_id
+
         # Получаем сообщение по ID
-        message = await client.get_messages(chat_id, ids=message_id)
+        message = await client.get_messages(peer, ids=message_id)
 
         if not message:
             raise RuntimeError(f"Message {message_id} not found in chat {chat_id}")
