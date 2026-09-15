@@ -91,12 +91,24 @@ async def download_large_file_via_forward(bot, message, file_extension: str = "t
 
         # Шаг 2: Telethon (ваш аккаунт) получает доступ к пересланному файлу
         import asyncio
-        await asyncio.sleep(2)  # Даём время на доставку сообщения
+        await asyncio.sleep(3)  # Даём больше времени на доставку
 
-        logger.info(f"🔍 Telethon: fetching forwarded message id={forwarded.message_id} from owner...")
+        logger.info(f"🔍 Telethon: searching for forwarded file in recent messages...")
 
-        # Получаем КОНКРЕТНОЕ сообщение по ID (не ищем среди всех)
-        msg = await client.get_messages(OWNER_USER_ID, ids=forwarded.message_id)
+        # Ищем пересланное сообщение среди последних (Bot API и Client API используют разные message_id)
+        msg = None
+        async for message in client.iter_messages('me', limit=20):
+            # Ищем аудио/документ, который появился только что
+            if message.media and (message.audio or message.document or message.video):
+                logger.info(f"  Checking msg_id={message.id}, has_audio={bool(message.audio)}, has_document={bool(message.document)}")
+                # Берём самое свежее медиа-сообщение (оно и есть наш файл)
+                msg = message
+                break
+
+        if not msg:
+            # Fallback: пробуем получить по ID из Bot API
+            logger.warning(f"⚠️ Media not found in recent messages, trying direct fetch by id={forwarded.message_id}")
+            msg = await client.get_messages(OWNER_USER_ID, ids=forwarded.message_id)
 
         if not msg:
             raise RuntimeError(f"Forwarded message {forwarded.message_id} not found")
