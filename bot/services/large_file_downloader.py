@@ -93,17 +93,40 @@ async def download_large_file_via_forward(bot, message, file_extension: str = "t
         import asyncio
         await asyncio.sleep(3)  # Даём больше времени на доставку
 
-        logger.info(f"🔍 Telethon: searching for forwarded file in recent messages...")
+        logger.info(f"🔍 Telethon: searching for forwarded file in owner's chat...")
 
-        # Ищем пересланное сообщение среди последних (Bot API и Client API используют разные message_id)
+        # Ищем пересланное сообщение в чате с владельцем (НЕ в 'me'!)
         msg = None
-        async for message in client.iter_messages('me', limit=20):
+        async for message in client.iter_messages(OWNER_USER_ID, limit=20):
             # Ищем аудио/документ, который появился только что
             if message.media and (message.audio or message.document or message.video):
-                logger.info(f"  Checking msg_id={message.id}, has_audio={bool(message.audio)}, has_document={bool(message.document)}")
-                # Берём самое свежее медиа-сообщение (оно и есть наш файл)
-                msg = message
-                break
+                file_size = 0
+                if message.audio:
+                    file_size = message.audio.size if hasattr(message.audio, 'size') else 0
+                elif message.document:
+                    file_size = message.document.size if hasattr(message.document, 'size') else 0
+                elif message.video:
+                    file_size = message.video.size if hasattr(message.video, 'size') else 0
+
+                size_mb = file_size / 1024 / 1024
+                logger.info(f"  Checking msg_id={message.id}, size={size_mb:.1f} MB, has_audio={bool(message.audio)}, has_document={bool(message.document)}")
+
+                # Проверяем, что размер примерно совпадает с ожидаемым (в пределах 20%)
+                if abs(size_mb - file_size_mb) / file_size_mb < 0.3:  # 30% допуск на сжатие
+                    logger.info(f"✅ Found matching file by size: {size_mb:.1f} MB ≈ {file_size_mb:.1f} MB")
+                    msg = message
+                    break
+                else:
+                    logger.info(f"  Size mismatch: {size_mb:.1f} MB != {file_size_mb:.1f} MB, skipping")
+
+        if not msg:
+            # Fallback: берём самое свежее медиа
+            logger.warning(f"⚠️ No matching file by size, taking most recent media...")
+            async for message in client.iter_messages(OWNER_USER_ID, limit=5):
+                if message.media and (message.audio or message.document or message.video):
+                    msg = message
+                    logger.info(f"✅ Taking most recent media: msg_id={message.id}")
+                    break
 
         if not msg:
             # Fallback: пробуем получить по ID из Bot API
