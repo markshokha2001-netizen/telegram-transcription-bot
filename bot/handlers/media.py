@@ -134,7 +134,13 @@ async def handle_audio(message: Message):
                 f"Файл большой ({file_size_mb:.1f} МБ)\n"
                 f"📥 Скачиваю через Telethon Client API (без лимитов)..."
             )
+
+            # Получаем username бота
+            bot_info = await message.bot.get_me()
+            bot_username = bot_info.username
+
             file_path = await download_large_file_direct(
+                bot_username=bot_username,
                 message=message,
                 file_extension=file_extension.lstrip('.'),
                 file_size_mb=file_size_mb
@@ -195,7 +201,13 @@ async def handle_video(message: Message):
                 f"Файл большой ({file_size_mb:.1f} МБ)\n"
                 f"📥 Скачиваю через Telethon Client API (без лимитов)..."
             )
+
+            # Получаем username бота
+            bot_info = await message.bot.get_me()
+            bot_username = bot_info.username
+
             video_path = await download_large_file_direct(
+                bot_username=bot_username,
                 message=message,
                 file_extension='mp4',
                 file_size_mb=file_size_mb

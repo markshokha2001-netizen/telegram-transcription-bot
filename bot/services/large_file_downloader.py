@@ -53,14 +53,15 @@ async def init_telethon():
         raise
 
 
-async def download_large_file_direct(message, file_extension: str = "tmp", file_size_mb: float = 0) -> str:
+async def download_large_file_direct(bot_username: str, message, file_extension: str = "tmp", file_size_mb: float = 0) -> str:
     """
-    Скачивает большой файл через Telethon напрямую из чата пользователя
+    Скачивает большой файл через Telethon из чата с ботом
 
-    Telethon (личный аккаунт) может читать сообщения в любом чате, где есть доступ.
-    Пользователь отправляет файл боту → Telethon читает его из того же чата → скачивает.
+    Telethon (личный аккаунт) может читать ВСЕ свои чаты, включая чат с ботом.
+    Ищем сообщение в диалоге "ваш аккаунт <-> бот".
 
     Args:
+        bot_username: username бота (например "doslovnovslovo_bot")
         message: aiogram Message с файлом
         file_extension: расширение файла (mp3, mp4, ogg и т.д.)
         file_size_mb: размер файла в МБ (для логирования)
@@ -74,24 +75,33 @@ async def download_large_file_direct(message, file_extension: str = "tmp", file_
         raise RuntimeError("Telethon client not connected")
 
     try:
-        logger.info(f"🔽 Downloading large file via Telethon from user chat: size={file_size_mb:.1f} MB")
+        logger.info(f"🔽 Downloading large file via Telethon from bot chat: size={file_size_mb:.1f} MB")
 
-        # Получаем user_id отправителя (владелец бота)
-        user_id = message.from_user.id
+        # Ищем сообщение в чате с ботом
+        # Telethon видит все сообщения в диалоге "вы <-> бот", включая ВАШИ сообщения боту
         message_id = message.message_id
 
-        logger.info(f"📍 Looking for message_id={message_id} in user chat={user_id}")
+        logger.info(f"📍 Looking for message_id={message_id} in bot chat @{bot_username}")
 
-        # Ищем сообщение в чате пользователя
-        # Telethon (ваш аккаунт) может читать ваши собственные сообщения
-        msg = await client.get_messages(user_id, ids=message_id)
+        # Ищем в чате с ботом
+        msg = None
 
+        # Пробуем получить прямо по ID
+        try:
+            messages = await client.get_messages(f"@{bot_username}", ids=message_id)
+            if messages and messages.media:
+                msg = messages
+                logger.info(f"✅ Found message by ID: {message_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not get message by ID: {e}")
+
+        # Если не нашли по ID — ищем по размеру среди последних
         if not msg:
-            logger.warning(f"⚠️ Message {message_id} not found by ID, searching recent messages...")
+            logger.info(f"🔍 Searching recent messages in @{bot_username} chat...")
 
-            # Fallback: ищем по размеру среди последних сообщений
-            async for m in client.iter_messages(user_id, limit=30):
-                if m.media and (m.audio or m.document or m.video):
+            async for m in client.iter_messages(f"@{bot_username}", limit=50):
+                # Ищем ИСХОДЯЩИЕ сообщения (от вас боту) с медиа
+                if m.out and m.media and (m.audio or m.document or m.video):
                     file_size = 0
                     if m.audio and hasattr(m.audio, 'size'):
                         file_size = m.audio.size
@@ -101,6 +111,7 @@ async def download_large_file_direct(message, file_extension: str = "tmp", file_
                         file_size = m.video.size
 
                     size_mb = file_size / 1024 / 1024
+                    logger.info(f"  Checking outgoing msg_id={m.id}, size={size_mb:.1f} MB")
 
                     # Ищем файл примерно такого же размера
                     if abs(size_mb - file_size_mb) / max(file_size_mb, 1) < 0.2:  # 20% допуск
@@ -109,10 +120,10 @@ async def download_large_file_direct(message, file_extension: str = "tmp", file_
                         break
 
         if not msg:
-            raise RuntimeError(f"Message with audio not found in user chat {user_id}")
+            raise RuntimeError(f"Message with audio not found in bot chat @{bot_username}")
 
         if not msg.media:
-            raise RuntimeError(f"Message {message_id} has no media")
+            raise RuntimeError(f"Message has no media")
 
         logger.info(f"✅ Found message with media in Telethon")
 
