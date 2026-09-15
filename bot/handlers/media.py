@@ -7,6 +7,7 @@ from bot.services.downloader import Downloader
 from bot.services.groq_transcriber import GroqTranscriber
 from bot.services.export import Exporter
 from bot.services.large_file_downloader import download_large_file_direct
+from bot.services.progress_bar import ProgressBar
 import logging
 
 router = Router()
@@ -76,36 +77,58 @@ async def send_long_transcript(message: Message, transcript: str, keyboard: Inli
 async def handle_voice(message: Message):
     """Обработка голосовых сообщений"""
     duration = message.voice.duration or 0
-    status_msg = await message.answer(
-        f"Принял, обрабатываю...\n"
-        f"Длительность: {duration//60}:{duration%60:02d}\n"
-        f"⏳ Транскрибирую..."
-    )
+
+    # Создаём прогресс-бар
+    progress = ProgressBar(message)
+    task_completed = False
+
+    async def process():
+        nonlocal task_completed
+        try:
+            file = await message.bot.get_file(message.voice.file_id)
+            file_path = f"downloads/{message.voice.file_id}.ogg"
+            os.makedirs("downloads", exist_ok=True)
+
+            # Скачивание
+            await message.bot.download_file(file.file_path, file_path)
+
+            # Транскрибация
+            transcript = await transcriber.transcribe_verbatim(file_path)
+
+            transcripts[message.message_id] = transcript
+            file_names[message.message_id] = "voice_message"
+
+            keyboard = get_export_keyboard(message.message_id)
+
+            task_completed = True
+            return (transcript, keyboard, file_path)
+        except Exception as e:
+            task_completed = True
+            raise e
 
     try:
-        file = await message.bot.get_file(message.voice.file_id)
-        file_path = f"downloads/{message.voice.file_id}.ogg"
-        os.makedirs("downloads", exist_ok=True)
+        # Запускаем прогресс-бар
+        progress_task = asyncio.create_task(progress.start(completion_check=lambda: task_completed))
 
-        # Скачивание через стандартный aiogram
-        await message.bot.download_file(file.file_path, file_path)
+        # Выполняем задачу
+        transcript, keyboard, file_path = await process()
 
-        transcript = await transcriber.transcribe_verbatim(file_path)
+        # Завершаем прогресс-бар
+        await progress.complete()
 
-        transcripts[message.message_id] = transcript
-        file_names[message.message_id] = "voice_message"  # Голосовые сообщения не имеют имени
-
-        keyboard = get_export_keyboard(message.message_id)
-
+        # Отправляем результат
         await send_long_transcript(message, transcript, keyboard)
-
         downloader.cleanup(file_path)
 
     except Exception as e:
+        await progress.complete()
         import traceback
         error_detail = traceback.format_exc()
         print(f"Ошибка обработки голосового: {error_detail}")
         await message.answer(f"❌ Ошибка при обработке: {str(e)}")
+    finally:
+        if not progress_task.done():
+            progress_task.cancel()
 
 
 @router.message(F.audio)
