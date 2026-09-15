@@ -6,10 +6,13 @@ from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyb
 from bot.services.downloader import Downloader
 from bot.services.groq_transcriber import GroqTranscriber
 from bot.services.export import Exporter
+from bot.services.large_file_downloader import download_large_file
+import logging
 
 router = Router()
 downloader = Downloader()
 exporter = Exporter()
+logger = logging.getLogger(__name__)
 
 # Используем только Groq для деплоя (быстро, онлайн)
 transcriber = GroqTranscriber()
@@ -20,7 +23,7 @@ audio_files = {}
 file_names = {}  # Хранилище для имён исходных файлов
 
 # Стандартный лимит Telegram Bot API
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 МБ
+MAX_FILE_SIZE_BOT_API = 50 * 1024 * 1024  # 50 МБ - лимит Bot API
 MAX_MESSAGE_LENGTH = 4000  # Лимит Telegram 4096, оставляем запас для заголовка
 
 
@@ -108,27 +111,39 @@ async def handle_voice(message: Message):
 @router.message(F.audio)
 async def handle_audio(message: Message):
     """Обработка аудиофайлов"""
-    # Убрана проверка размера — пробуем скачать любой файл
-    # Telegram Bot API на практике поддерживает до 50 МБ
-
-    # Показываем размер и примерное время
     file_size_mb = message.audio.file_size / 1024 / 1024 if message.audio.file_size else 0
     duration = message.audio.duration or 0
+
+    # Определяем метод скачивания
+    use_telethon = message.audio.file_size and message.audio.file_size > MAX_FILE_SIZE_BOT_API
 
     status_msg = await message.answer(
         f"Принял, обрабатываю...\n"
         f"Размер: {file_size_mb:.1f} МБ, длительность: {duration//60}:{duration%60:02d}\n"
-        f"⏳ Это может занять несколько минут..."
+        f"{'🔄 Большой файл — использую Telethon Client API (без лимитов)' if use_telethon else '⏳ Скачиваю через Bot API...'}"
     )
 
     try:
-        file = await message.bot.get_file(message.audio.file_id)
         file_extension = Path(message.audio.file_name or "audio.mp3").suffix
-        file_path = f"downloads/{message.audio.file_id}{file_extension}"
         os.makedirs("downloads", exist_ok=True)
 
-        # Скачивание через стандартный aiogram
-        await message.bot.download_file(file.file_path, file_path)
+        if use_telethon:
+            # Большой файл — скачиваем через Telethon (без лимитов!)
+            logger.info(f"Audio file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — using Telethon")
+            await status_msg.edit_text(
+                f"Файл большой ({file_size_mb:.1f} МБ)\n"
+                f"📥 Скачиваю через Telethon Client API (без лимитов)..."
+            )
+            file_path = await download_large_file(
+                chat_id=message.chat.id,
+                message_id=message.message_id,
+                file_extension=file_extension.lstrip('.')
+            )
+        else:
+            # Обычный файл — скачиваем через Bot API
+            file = await message.bot.get_file(message.audio.file_id)
+            file_path = f"downloads/{message.audio.file_id}{file_extension}"
+            await message.bot.download_file(file.file_path, file_path)
 
         await status_msg.edit_text(
             f"Файл скачан ({file_size_mb:.1f} МБ)\n"
@@ -158,25 +173,38 @@ async def handle_audio(message: Message):
 @router.message(F.video)
 async def handle_video(message: Message):
     """Обработка видеофайлов"""
-    # Убрана проверка размера — пробуем скачать любой файл
-    # Telegram Bot API на практике поддерживает до 50 МБ
-
     file_size_mb = message.video.file_size / 1024 / 1024 if message.video.file_size else 0
     duration = message.video.duration or 0
+
+    # Определяем метод скачивания
+    use_telethon = message.video.file_size and message.video.file_size > MAX_FILE_SIZE_BOT_API
 
     status_msg = await message.answer(
         f"Принял, обрабатываю...\n"
         f"Размер: {file_size_mb:.1f} МБ, длительность: {duration//60}:{duration%60:02d}\n"
-        f"⏳ Это может занять несколько минут..."
+        f"{'🔄 Большой файл — использую Telethon Client API (без лимитов)' if use_telethon else '⏳ Скачиваю через Bot API...'}"
     )
 
     try:
-        file = await message.bot.get_file(message.video.file_id)
-        video_path = f"downloads/{message.video.file_id}.mp4"
         os.makedirs("downloads", exist_ok=True)
 
-        # Скачивание через стандартный aiogram
-        await message.bot.download_file(file.file_path, video_path)
+        if use_telethon:
+            # Большой файл — скачиваем через Telethon (без лимитов!)
+            logger.info(f"Video file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — using Telethon")
+            await status_msg.edit_text(
+                f"Файл большой ({file_size_mb:.1f} МБ)\n"
+                f"📥 Скачиваю через Telethon Client API (без лимитов)..."
+            )
+            video_path = await download_large_file(
+                chat_id=message.chat.id,
+                message_id=message.message_id,
+                file_extension='mp4'
+            )
+        else:
+            # Обычный файл — скачиваем через Bot API
+            file = await message.bot.get_file(message.video.file_id)
+            video_path = f"downloads/{message.video.file_id}.mp4"
+            await message.bot.download_file(file.file_path, video_path)
 
         await status_msg.edit_text(
             f"Видео скачано ({file_size_mb:.1f} МБ)\n"
