@@ -21,6 +21,7 @@ file_names = {}  # Хранилище для имён исходных файл�
 
 # Стандартный лимит Telegram Bot API
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 МБ
+MAX_MESSAGE_LENGTH = 4000  # Лимит Telegram 4096, оставляем запас для заголовка
 
 
 def get_export_keyboard(message_id: int) -> InlineKeyboardMarkup:
@@ -39,6 +40,33 @@ def get_export_keyboard(message_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="✅ Завершить сессию", callback_data="end_session")
         ]
     ])
+
+
+async def send_long_transcript(message: Message, transcript: str, keyboard: InlineKeyboardMarkup):
+    """Отправляет транскрипт, разбивая на части если он длинный"""
+    if len(transcript) <= MAX_MESSAGE_LENGTH:
+        # Короткий текст — отправляем одним сообщением с кнопками
+        await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
+    else:
+        # Длинный текст — разбиваем на части
+        parts = []
+        remaining = transcript
+
+        while remaining:
+            chunk = remaining[:MAX_MESSAGE_LENGTH]
+            remaining = remaining[MAX_MESSAGE_LENGTH:]
+            parts.append(chunk)
+
+        # Отправляем все части текста
+        for i, part in enumerate(parts, 1):
+            await message.answer(f"📝 Дословно (часть {i}/{len(parts)}):\n\n{part}")
+
+        # Последнее сообщение с кнопками
+        await message.answer(
+            f"✅ Транскрибация завершена ({len(parts)} частей, {len(transcript)} символов)\n\n"
+            f"Используйте кнопки ниже для экспорта или создания конспекта:",
+            reply_markup=keyboard
+        )
 
 
 @router.message(F.voice)
@@ -66,7 +94,7 @@ async def handle_voice(message: Message):
 
         keyboard = get_export_keyboard(message.message_id)
 
-        await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
+        await send_long_transcript(message, transcript, keyboard)
 
         downloader.cleanup(file_path)
 
@@ -80,15 +108,8 @@ async def handle_voice(message: Message):
 @router.message(F.audio)
 async def handle_audio(message: Message):
     """Обработка аудиофайлов"""
-    if message.audio.file_size and message.audio.file_size > MAX_FILE_SIZE:
-        await message.answer(
-            f"❌ Файл слишком большой ({message.audio.file_size / 1024 / 1024:.1f} МБ).\n"
-            f"Максимальный размер: {MAX_FILE_SIZE / 1024 / 1024:.0f} МБ.\n\n"
-            f"Попробуйте:\n"
-            f"• Сжать файл\n"
-            f"• Загрузить на YouTube и отправить ссылку"
-        )
-        return
+    # Убрана проверка размера — пробуем скачать любой файл
+    # Telegram Bot API на практике поддерживает до 50 МБ
 
     # Показываем размер и примерное время
     file_size_mb = message.audio.file_size / 1024 / 1024 if message.audio.file_size else 0
@@ -123,7 +144,7 @@ async def handle_audio(message: Message):
 
         keyboard = get_export_keyboard(message.message_id)
 
-        await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
+        await send_long_transcript(message, transcript, keyboard)
 
         downloader.cleanup(file_path)
 
@@ -137,15 +158,8 @@ async def handle_audio(message: Message):
 @router.message(F.video)
 async def handle_video(message: Message):
     """Обработка видеофайлов"""
-    if message.video.file_size and message.video.file_size > MAX_FILE_SIZE:
-        await message.answer(
-            f"❌ Файл слишком большой ({message.video.file_size / 1024 / 1024:.1f} МБ).\n"
-            f"Максимальный размер: {MAX_FILE_SIZE / 1024 / 1024:.0f} МБ.\n\n"
-            f"Попробуйте:\n"
-            f"• Сжать видео\n"
-            f"• Загрузить на YouTube и отправить ссылку"
-        )
-        return
+    # Убрана проверка размера — пробуем скачать любой файл
+    # Telegram Bot API на практике поддерживает до 50 МБ
 
     file_size_mb = message.video.file_size / 1024 / 1024 if message.video.file_size else 0
     duration = message.video.duration or 0
@@ -202,7 +216,7 @@ async def handle_video(message: Message):
             ]
         ])
 
-        await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
+        await send_long_transcript(message, transcript, keyboard)
 
         downloader.cleanup(video_path)
 
