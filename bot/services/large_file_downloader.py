@@ -50,14 +50,20 @@ async def init_telethon():
         raise
 
 
-async def download_large_file(chat_id: int, message_id: int, file_extension: str = "tmp") -> str:
+async def download_large_file_via_forward(bot, message, file_extension: str = "tmp", file_size_mb: float = 0) -> str:
     """
     Скачивает большой файл через Telethon Client API (обход лимита Bot API в 50 МБ)
 
+    Алгоритм:
+    1. Bot пересылает файл себе в Saved Messages
+    2. Telethon (личный аккаунт) получает доступ к боту
+    3. Telethon скачивает файл из Saved Messages бота (без лимитов)
+
     Args:
-        chat_id: ID чата (из aiogram message.chat.id)
-        message_id: ID сообщения (из aiogram message.message_id)
+        bot: aiogram Bot instance
+        message: aiogram Message с файлом
         file_extension: расширение файла (mp3, mp4, ogg и т.д.)
+        file_size_mb: размер файла в МБ (для логирования)
 
     Returns:
         Путь к скачанному файлу
@@ -68,44 +74,62 @@ async def download_large_file(chat_id: int, message_id: int, file_extension: str
         raise RuntimeError("Telethon client not connected")
 
     try:
-        logger.info(f"🔽 Downloading large file via Telethon: chat_id={chat_id}, msg_id={message_id}")
+        logger.info(f"🔽 Downloading large file via forward hack: size={file_size_mb:.1f} MB")
 
-        # Сначала получаем entity чата (для корректной работы с ID)
-        try:
-            peer = await client.get_input_entity(chat_id)
-            logger.info(f"✅ Got peer entity for chat {chat_id}")
-        except Exception as e:
-            logger.error(f"❌ Failed to get entity for chat {chat_id}: {e}")
-            # Fallback: пробуем напрямую получить сообщение
-            peer = chat_id
+        # Шаг 1: Бот пересылает файл себе в Saved Messages
+        bot_info = await bot.get_me()
+        bot_id = bot_info.id
 
-        # Получаем сообщение по ID
-        message = await client.get_messages(peer, ids=message_id)
+        logger.info(f"📤 Forwarding message to bot's Saved Messages (bot_id={bot_id})...")
+        forwarded = await bot.forward_message(
+            chat_id=bot_id,  # Бот отправляет себе
+            from_chat_id=message.chat.id,
+            message_id=message.message_id
+        )
 
-        if not message:
-            raise RuntimeError(f"Message {message_id} not found in chat {chat_id}")
+        logger.info(f"✅ Message forwarded to bot, new message_id={forwarded.message_id}")
 
-        # Проверяем наличие медиа
-        if not message.media:
-            raise RuntimeError(f"Message {message_id} has no media")
+        # Шаг 2: Telethon получает доступ к боту и скачивает файл
+        import asyncio
+        await asyncio.sleep(1)  # Даём время на доставку сообщения
 
-        # Определяем путь для сохранения
-        output_path = DOWNLOAD_DIR / f"large_{message_id}.{file_extension}"
+        logger.info(f"🔍 Telethon: getting messages from bot {bot_id}...")
 
-        # Скачиваем через Telethon (без лимитов!)
-        logger.info(f"📥 Downloading to {output_path}...")
-        await client.download_media(message, str(output_path))
+        # Получаем последние сообщения от бота (ищем наш файл)
+        async for msg in client.iter_messages(bot_id, limit=5):
+            if msg.id == forwarded.message_id or (msg.media and hasattr(msg.media, 'document')):
+                logger.info(f"✅ Found message with media: msg_id={msg.id}")
 
-        if not output_path.exists():
-            raise RuntimeError("Download failed - file not found")
+                # Определяем путь для сохранения
+                import uuid
+                unique_id = str(uuid.uuid4())[:8]
+                output_path = DOWNLOAD_DIR / f"large_{unique_id}.{file_extension}"
 
-        file_size_mb = output_path.stat().st_size / 1024 / 1024
-        logger.info(f"✅ Large file downloaded: {file_size_mb:.2f} MB")
+                # Скачиваем через Telethon (без лимитов!)
+                logger.info(f"📥 Downloading to {output_path}...")
+                await client.download_media(msg, str(output_path))
 
-        return str(output_path)
+                if not output_path.exists():
+                    raise RuntimeError("Download failed - file not found")
+
+                downloaded_size_mb = output_path.stat().st_size / 1024 / 1024
+                logger.info(f"✅ Large file downloaded: {downloaded_size_mb:.2f} MB")
+
+                # Удаляем пересланное сообщение из Saved Messages бота
+                try:
+                    await bot.delete_message(chat_id=bot_id, message_id=forwarded.message_id)
+                    logger.info("🗑️ Deleted forwarded message from bot's Saved Messages")
+                except:
+                    pass  # Не критично, если не удалось удалить
+
+                return str(output_path)
+
+        raise RuntimeError("File not found in bot's messages")
 
     except Exception as e:
         logger.error(f"❌ Error downloading large file: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise RuntimeError(f"Не удалось скачать файл через Telethon: {str(e)}")
 
 
