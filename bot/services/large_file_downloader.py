@@ -89,42 +89,46 @@ async def download_large_file_via_forward(bot, message, file_extension: str = "t
 
         logger.info(f"✅ Message forwarded to owner, new message_id={forwarded.message_id}")
 
-        # Шаг 2: Telethon (ваш аккаунт) получает доступ к пересланному файлу в своих сообщениях
+        # Шаг 2: Telethon (ваш аккаунт) получает доступ к пересланному файлу
         import asyncio
         await asyncio.sleep(2)  # Даём время на доставку сообщения
 
-        logger.info(f"🔍 Telethon: getting messages from 'me' (Saved Messages)...")
+        logger.info(f"🔍 Telethon: fetching forwarded message id={forwarded.message_id} from owner...")
 
-        # Получаем последние сообщения из Saved Messages (ищем наш файл)
-        async for msg in client.iter_messages('me', limit=10):
-            if msg.id == forwarded.message_id or (msg.media and (msg.audio or msg.video or msg.document)):
-                logger.info(f"✅ Found message with media: msg_id={msg.id}")
+        # Получаем КОНКРЕТНОЕ сообщение по ID (не ищем среди всех)
+        msg = await client.get_messages(OWNER_USER_ID, ids=forwarded.message_id)
 
-                # Определяем путь для сохранения
-                import uuid
-                unique_id = str(uuid.uuid4())[:8]
-                output_path = DOWNLOAD_DIR / f"large_{unique_id}.{file_extension}"
+        if not msg:
+            raise RuntimeError(f"Forwarded message {forwarded.message_id} not found")
 
-                # Скачиваем через Telethon (без лимитов!)
-                logger.info(f"📥 Downloading to {output_path}...")
-                await client.download_media(msg, str(output_path))
+        if not msg.media:
+            raise RuntimeError(f"Message {forwarded.message_id} has no media")
 
-                if not output_path.exists():
-                    raise RuntimeError("Download failed - file not found")
+        logger.info(f"✅ Found forwarded message with media: msg_id={msg.id}")
 
-                downloaded_size_mb = output_path.stat().st_size / 1024 / 1024
-                logger.info(f"✅ Large file downloaded: {downloaded_size_mb:.2f} MB")
+        # Определяем путь для сохранения
+        import uuid
+        unique_id = str(uuid.uuid4())[:8]
+        output_path = DOWNLOAD_DIR / f"large_{unique_id}.{file_extension}"
 
-                # Удаляем пересланное сообщение из Saved Messages
-                try:
-                    await client.delete_messages('me', msg.id)
-                    logger.info("🗑️ Deleted forwarded message from Saved Messages")
-                except:
-                    pass  # Не критично
+        # Скачиваем через Telethon (без лимитов!)
+        logger.info(f"📥 Downloading to {output_path}...")
+        await client.download_media(msg, str(output_path))
 
-                return str(output_path)
+        if not output_path.exists():
+            raise RuntimeError("Download failed - file not found")
 
-        raise RuntimeError("File not found in owner's messages")
+        downloaded_size_mb = output_path.stat().st_size / 1024 / 1024
+        logger.info(f"✅ Large file downloaded: {downloaded_size_mb:.2f} MB")
+
+        # Удаляем пересланное сообщение (чтобы не мусорить)
+        try:
+            await client.delete_messages(OWNER_USER_ID, msg.id)
+            logger.info("🗑️ Deleted forwarded message from owner's chat")
+        except Exception as del_error:
+            logger.warning(f"⚠️ Could not delete forwarded message: {del_error}")
+
+        return str(output_path)
 
     except Exception as e:
         logger.error(f"❌ Error downloading large file: {e}")
