@@ -26,6 +26,9 @@ async def split_audio_by_size(audio_path: str, max_size_mb: int = MAX_CHUNK_SIZE
     Returns:
         Список путей к созданным чанкам
     """
+    # Проверяем, не видео ли это (нужно извлечь аудио сначала)
+    audio_path = await _ensure_audio_only(audio_path)
+
     file_size_mb = os.path.getsize(audio_path) / 1024 / 1024
 
     if file_size_mb <= max_size_mb:
@@ -68,7 +71,8 @@ async def split_audio_by_size(audio_path: str, max_size_mb: int = MAX_CHUNK_SIZE
             "-i", audio_path,
             "-ss", str(start_time),  # начало
             "-t", str(chunk_duration),  # длительность
-            "-c", "copy",  # копируем без реенкодинга (быстро)
+            "-vn",  # без видео (на случай если это видеофайл)
+            "-acodec", "copy",  # копируем аудио без реенкодинга (быстро)
             "-y",  # перезаписать если существует
             str(chunk_path)
         ]
@@ -95,6 +99,72 @@ async def split_audio_by_size(audio_path: str, max_size_mb: int = MAX_CHUNK_SIZE
 
     logger.info(f"✅ Split complete: {len(chunk_paths)} chunks created")
     return chunk_paths
+
+
+async def _ensure_audio_only(file_path: str) -> str:
+    """
+    Проверяет, не содержит ли файл видео. Если да — извлекает только аудио.
+    Возвращает путь к чистому аудиофайлу.
+    """
+    # Проверяем наличие видеострима
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=codec_type",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        file_path
+    ]
+
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+
+    stdout, stderr = await process.communicate()
+
+    # Если есть видеострим — извлекаем аудио
+    if stdout.decode().strip() == "video":
+        logger.info(f"File contains video, extracting audio only...")
+
+        output_dir = Path(file_path).parent
+        base_name = Path(file_path).stem
+        audio_only_path = output_dir / f"{base_name}_audio.mp3"
+
+        # Извлекаем аудио
+        extract_cmd = [
+            "ffmpeg",
+            "-i", file_path,
+            "-vn",  # без видео
+            "-acodec", "libmp3lame",  # конвертируем в MP3
+            "-q:a", "2",  # качество
+            "-y",
+            str(audio_only_path)
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *extract_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            logger.error(f"ffmpeg extract error: {stderr.decode()}")
+            raise RuntimeError("Failed to extract audio from video")
+
+        if not audio_only_path.exists():
+            raise RuntimeError("Audio extraction failed")
+
+        size_mb = audio_only_path.stat().st_size / 1024 / 1024
+        logger.info(f"✅ Audio extracted: {size_mb:.1f} MB")
+
+        return str(audio_only_path)
+
+    # Это уже чистое аудио
+    return file_path
 
 
 async def _get_audio_duration(audio_path: str) -> float:
