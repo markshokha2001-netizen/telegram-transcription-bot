@@ -128,18 +128,17 @@ async def handle_audio(message: Message):
         os.makedirs("downloads", exist_ok=True)
 
         if use_telethon:
-            # Файл >50 МБ — Bot API не может его скачать
-            # Просим пользователя использовать альтернативу
-            logger.info(f"Audio file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — Bot API limit exceeded")
-
-            await message.answer(
-                f"❌ Файл слишком большой ({file_size_mb:.1f} МБ).\n"
-                f"Telegram Bot API не может скачать файлы больше 50 МБ.\n\n"
-                f"✅ Решение:\n"
-                f"Загрузите аудио на YouTube (можно как unlisted видео) и отправьте мне ссылку.\n"
-                f"Я скачаю и транскрибирую без ограничений по размеру."
+            # Большой файл — скачиваем через Telethon (без лимитов!)
+            logger.info(f"Audio file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — using Telethon")
+            await status_msg.edit_text(
+                f"Файл большой ({file_size_mb:.1f} МБ)\n"
+                f"📥 Скачиваю через Telethon Client API (без лимитов)..."
             )
-            return
+            file_path = await download_large_file_direct(
+                message=message,
+                file_extension=file_extension.lstrip('.'),
+                file_size_mb=file_size_mb
+            )
         else:
             # Обычный файл — скачиваем через Bot API
             file = await message.bot.get_file(message.audio.file_id)
@@ -190,17 +189,17 @@ async def handle_video(message: Message):
         os.makedirs("downloads", exist_ok=True)
 
         if use_telethon:
-            # Файл >50 МБ — Bot API не может его скачать
-            logger.info(f"Video file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — Bot API limit exceeded")
-
-            await message.answer(
-                f"❌ Файл слишком большой ({file_size_mb:.1f} МБ).\n"
-                f"Telegram Bot API не может скачать файлы больше 50 МБ.\n\n"
-                f"✅ Решение:\n"
-                f"Загрузите видео на YouTube (можно как unlisted) и отправьте мне ссылку.\n"
-                f"Я скачаю и транскрибирую без ограничений по размеру."
+            # Большой файл — скачиваем через Telethon (без лимитов!)
+            logger.info(f"Video file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — using Telethon")
+            await status_msg.edit_text(
+                f"Файл большой ({file_size_mb:.1f} МБ)\n"
+                f"📥 Скачиваю через Telethon Client API (без лимитов)..."
             )
-            return
+            video_path = await download_large_file_direct(
+                message=message,
+                file_extension='mp4',
+                file_size_mb=file_size_mb
+            )
         else:
             # Обычный файл — скачиваем через Bot API
             file = await message.bot.get_file(message.video.file_id)

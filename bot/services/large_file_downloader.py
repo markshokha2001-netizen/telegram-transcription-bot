@@ -53,16 +53,14 @@ async def init_telethon():
         raise
 
 
-async def download_large_file_direct(bot, message, file_extension: str = "tmp", file_size_mb: float = 0) -> str:
+async def download_large_file_direct(message, file_extension: str = "tmp", file_size_mb: float = 0) -> str:
     """
-    Скачивает большой файл через Telethon напрямую по file_unique_id (обход лимита Bot API)
+    Скачивает большой файл через Telethon напрямую из чата пользователя
 
-    Алгоритм:
-    1. Получаем file_unique_id из Bot API (aiogram)
-    2. Telethon скачивает файл напрямую по этому ID (без пересылки)
+    Telethon (личный аккаунт) может читать сообщения в любом чате, где есть доступ.
+    Пользователь отправляет файл боту → Telethon читает его из того же чата → скачивает.
 
     Args:
-        bot: aiogram Bot instance
         message: aiogram Message с файлом
         file_extension: расширение файла (mp3, mp4, ogg и т.д.)
         file_size_mb: размер файла в МБ (для логирования)
@@ -76,61 +74,64 @@ async def download_large_file_direct(bot, message, file_extension: str = "tmp", 
         raise RuntimeError("Telethon client not connected")
 
     try:
-        logger.info(f"🔽 Downloading large file directly via Telethon: size={file_size_mb:.1f} MB")
+        logger.info(f"🔽 Downloading large file via Telethon from user chat: size={file_size_mb:.1f} MB")
 
-        # Получаем file_id из сообщения
-        if message.audio:
-            file_id = message.audio.file_id
-        elif message.video:
-            file_id = message.video.file_id
-        elif message.document:
-            file_id = message.document.file_id
-        else:
-            raise RuntimeError("No audio/video/document found in message")
+        # Получаем user_id отправителя (владелец бота)
+        user_id = message.from_user.id
+        message_id = message.message_id
 
-        logger.info(f"📄 File ID: {file_id[:30]}...")
+        logger.info(f"📍 Looking for message_id={message_id} in user chat={user_id}")
 
-        # Bot API не может скачать файл >50 МБ, но мы можем получить file_reference
-        # через getFile и передать его в Telethon
+        # Ищем сообщение в чате пользователя
+        # Telethon (ваш аккаунт) может читать ваши собственные сообщения
+        msg = await client.get_messages(user_id, ids=message_id)
 
-        # Получаем полную информацию о файле через Bot API
-        file_info = await bot.get_file(file_id)
-        file_path = file_info.file_path  # путь на серверах Telegram
+        if not msg:
+            logger.warning(f"⚠️ Message {message_id} not found by ID, searching recent messages...")
 
-        logger.info(f"📍 File path on Telegram servers: {file_path}")
+            # Fallback: ищем по размеру среди последних сообщений
+            async for m in client.iter_messages(user_id, limit=30):
+                if m.media and (m.audio or m.document or m.video):
+                    file_size = 0
+                    if m.audio and hasattr(m.audio, 'size'):
+                        file_size = m.audio.size
+                    elif m.document and hasattr(m.document, 'size'):
+                        file_size = m.document.size
+                    elif m.video and hasattr(m.video, 'size'):
+                        file_size = m.video.size
 
-        # Telethon может скачать файл по file_path напрямую
+                    size_mb = file_size / 1024 / 1024
+
+                    # Ищем файл примерно такого же размера
+                    if abs(size_mb - file_size_mb) / max(file_size_mb, 1) < 0.2:  # 20% допуск
+                        logger.info(f"✅ Found matching file: size={size_mb:.1f} MB ≈ {file_size_mb:.1f} MB")
+                        msg = m
+                        break
+
+        if not msg:
+            raise RuntimeError(f"Message with audio not found in user chat {user_id}")
+
+        if not msg.media:
+            raise RuntimeError(f"Message {message_id} has no media")
+
+        logger.info(f"✅ Found message with media in Telethon")
+
+        # Определяем путь для сохранения
         import uuid
         unique_id = str(uuid.uuid4())[:8]
         output_path = DOWNLOAD_DIR / f"large_{unique_id}.{file_extension}"
 
-        logger.info(f"📥 Downloading via Telethon to {output_path}...")
+        # Скачиваем через Telethon (без лимитов!)
+        logger.info(f"📥 Downloading to {output_path}...")
+        await client.download_media(msg, str(output_path))
 
-        # Используем Telethon для скачивания через InputFileLocation
-        from telethon.tl.types import InputDocumentFileLocation
+        if not output_path.exists():
+            raise RuntimeError("Download failed - file not found")
 
-        # Для больших файлов используем прямое скачивание
-        # Получаем message через Telethon чтобы получить правильный Document
-        bot_username = (await bot.get_me()).username
-        logger.info(f"🤖 Bot username: @{bot_username}")
+        downloaded_size_mb = output_path.stat().st_size / 1024 / 1024
+        logger.info(f"✅ Large file downloaded: {downloaded_size_mb:.2f} MB")
 
-        # Ищем сообщение в чате с ботом
-        async for msg in client.iter_messages(f"@{bot_username}", limit=50):
-            if msg.media and msg.id == message.message_id:
-                logger.info(f"✅ Found message in Telethon: msg_id={msg.id}")
-
-                # Скачиваем файл
-                await client.download_media(msg, str(output_path))
-
-                if not output_path.exists():
-                    raise RuntimeError("Download failed - file not found")
-
-                downloaded_size_mb = output_path.stat().st_size / 1024 / 1024
-                logger.info(f"✅ Large file downloaded: {downloaded_size_mb:.2f} MB")
-
-                return str(output_path)
-
-        raise RuntimeError(f"Message {message.message_id} not found in bot's chat")
+        return str(output_path)
 
     except Exception as e:
         logger.error(f"❌ Error downloading large file: {e}")
