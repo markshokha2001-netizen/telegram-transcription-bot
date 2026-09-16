@@ -22,23 +22,26 @@ PHONE = os.getenv("TELEGRAM_PHONE", "+79113583410")
 DOWNLOAD_BOTS = [
     {
         "username": "SaveTubeMediaBot",
-        "button_text": ["Audio", "Аудио", "MP3"],  # Возможные тексты кнопки
-        "wait_for_button": True,  # Нужно ли ждать кнопку
+        "button_sequence": [
+            {"text": ["Скачать аудио", "Audio"], "wait_after": 5}  # Одна кнопка
+        ],
     },
     {
         "username": "SaveFromVkBot",
-        "button_text": ["Audio", "Аудио", "MP3"],
-        "wait_for_button": True,
+        "button_sequence": [
+            {"text": ["Audio", "Аудио"], "wait_after": 5}  # Одна кнопка
+        ],
     },
     {
         "username": "skachaesh_bot",
-        "button_text": ["Audio", "Аудио", "MP3"],
-        "wait_for_button": True,
+        "button_sequence": [
+            {"text": ["m4a"], "wait_after": 3},  # Сначала формат
+            {"text": ["Original", "Русский"], "wait_after": 5}  # Потом язык
+        ],
     },
     {
         "username": "DiggerDigitalBot",
-        "button_text": None,  # Не требует кнопок, сразу отправляет аудио
-        "wait_for_button": False,
+        "button_sequence": None,  # Не требует кнопок, сразу отправляет аудио
     }
 ]
 
@@ -96,25 +99,112 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
         messages_before = await client.get_messages(bot_username, limit=1)
         last_message_id = messages_before[0].id if messages_before else 0
 
-        # Ждём ответа (макс 60 секунд на первый ответ)
-        timeout = 60
-        check_interval = 3
+        # Если бот не требует кнопок (DiggerDigitalBot)
+        if bot_config["button_sequence"] is None:
+            logger.info(f"[{request_id}] @{bot_username}: waiting for direct audio...")
+
+            timeout = 120
+            check_interval = 5
+            elapsed = 0
+
+            while elapsed < timeout:
+                await asyncio.sleep(check_interval)
+                elapsed += check_interval
+
+                async for message in client.iter_messages(bot_username, limit=5):
+                    if message.id <= last_message_id:
+                        continue
+
+                    if message.audio or (message.document and message.document.mime_type and 'audio' in message.document.mime_type):
+                        logger.info(f"[{request_id}] @{bot_username} sent audio!")
+
+                        filename = f"youtube_{request_id}.mp3"
+                        download_path = DOWNLOAD_DIR / filename
+
+                        await message.download_media(str(download_path))
+                        size_mb = download_path.stat().st_size / 1024 / 1024
+                        logger.info(f"[{request_id}] ✅ Downloaded from @{bot_username}: {size_mb:.2f} MB")
+
+                        return (True, str(download_path), None)
+
+            raise RuntimeError(f"@{bot_username}: No audio received")
+
+        # Бот требует последовательность кнопок
+        current_message_id = last_message_id
+
+        for step_num, button_step in enumerate(bot_config["button_sequence"], 1):
+            logger.info(f"[{request_id}] @{bot_username} step {step_num}: looking for button {button_step['text']}")
+
+            # Ждём сообщение с кнопками
+            timeout = 60
+            check_interval = 3
+            elapsed = 0
+            found_button = False
+
+            while elapsed < timeout and not found_button:
+                await asyncio.sleep(check_interval)
+                elapsed += check_interval
+
+                async for message in client.iter_messages(bot_username, limit=5):
+                    if message.id <= current_message_id:
+                        continue
+
+                    # Проверяем, может это уже аудио (некоторые боты сразу отправляют)
+                    if message.audio or (message.document and message.document.mime_type and 'audio' in message.document.mime_type):
+                        logger.info(f"[{request_id}] @{bot_username} sent audio directly!")
+
+                        filename = f"youtube_{request_id}.mp3"
+                        download_path = DOWNLOAD_DIR / filename
+
+                        await message.download_media(str(download_path))
+                        size_mb = download_path.stat().st_size / 1024 / 1024
+                        logger.info(f"[{request_id}] ✅ Downloaded from @{bot_username}: {size_mb:.2f} MB")
+
+                        return (True, str(download_path), None)
+
+                    # Ищем кнопку
+                    if message.buttons:
+                        for row in message.buttons:
+                            for button in row:
+                                button_text = button.text.lower()
+
+                                # Проверяем, содержит ли кнопка нужный текст
+                                if any(keyword.lower() in button_text for keyword in button_step["text"]):
+                                    logger.info(f"[{request_id}] @{bot_username} clicking button: {button.text}")
+
+                                    # Нажимаем кнопку
+                                    await message.click(data=button.data)
+                                    current_message_id = message.id
+                                    found_button = True
+
+                                    # Ждём после нажатия
+                                    await asyncio.sleep(button_step["wait_after"])
+                                    break
+                            if found_button:
+                                break
+                        if found_button:
+                            break
+
+            if not found_button:
+                raise RuntimeError(f"@{bot_username}: Button not found at step {step_num}")
+
+        # После всех кнопок ждём аудио
+        logger.info(f"[{request_id}] @{bot_username}: all buttons clicked, waiting for audio...")
+
+        timeout = 120
+        check_interval = 5
         elapsed = 0
 
         while elapsed < timeout:
             await asyncio.sleep(check_interval)
             elapsed += check_interval
 
-            # Проверяем новые сообщения
-            async for message in client.iter_messages(bot_username, limit=5):
-                if message.id <= last_message_id:
+            async for message in client.iter_messages(bot_username, limit=10):
+                if message.id <= current_message_id:
                     continue
 
-                logger.info(f"[{request_id}] @{bot_username} response: has_audio={bool(message.audio)}, has_document={bool(message.document)}, has_button={bool(message.buttons)}")
-
-                # Если бот прислал аудио сразу
                 if message.audio or (message.document and message.document.mime_type and 'audio' in message.document.mime_type):
-                    logger.info(f"[{request_id}] @{bot_username} sent audio directly!")
+                    logger.info(f"[{request_id}] @{bot_username} sent audio after buttons!")
 
                     filename = f"youtube_{request_id}.mp3"
                     download_path = DOWNLOAD_DIR / filename
@@ -125,51 +215,7 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
 
                     return (True, str(download_path), None)
 
-                # Если бот прислал кнопки — нажимаем кнопку "Аудио"
-                if message.buttons and bot_config["wait_for_button"]:
-                    logger.info(f"[{request_id}] @{bot_username} sent buttons, looking for audio button...")
-
-                    # Ищем кнопку с текстом про аудио
-                    for row in message.buttons:
-                        for button in row:
-                            button_text = button.text.lower()
-                            logger.info(f"[{request_id}] Button text: {button.text}")
-
-                            # Проверяем, содержит ли кнопка нужный текст
-                            if any(keyword.lower() in button_text for keyword in bot_config["button_text"]):
-                                logger.info(f"[{request_id}] Clicking audio button: {button.text}")
-
-                                # Нажимаем кнопку
-                                await message.click(data=button.data)
-
-                                # Ждём аудио после нажатия кнопки (макс 120 секунд)
-                                audio_timeout = 120
-                                audio_elapsed = 0
-
-                                while audio_elapsed < audio_timeout:
-                                    await asyncio.sleep(5)
-                                    audio_elapsed += 5
-
-                                    # Ищем аудио после нажатия кнопки
-                                    async for msg in client.iter_messages(bot_username, limit=10):
-                                        if msg.id <= message.id:
-                                            continue
-
-                                        if msg.audio or (msg.document and msg.document.mime_type and 'audio' in msg.document.mime_type):
-                                            logger.info(f"[{request_id}] @{bot_username} sent audio after button click!")
-
-                                            filename = f"youtube_{request_id}.mp3"
-                                            download_path = DOWNLOAD_DIR / filename
-
-                                            await msg.download_media(str(download_path))
-                                            size_mb = download_path.stat().st_size / 1024 / 1024
-                                            logger.info(f"[{request_id}] ✅ Downloaded from @{bot_username}: {size_mb:.2f} MB")
-
-                                            return (True, str(download_path), None)
-
-                                raise RuntimeError(f"@{bot_username}: No audio after button click")
-
-        raise RuntimeError(f"@{bot_username}: Timeout waiting for response")
+        raise RuntimeError(f"@{bot_username}: No audio after buttons")
 
     except Exception as e:
         logger.warning(f"[{request_id}] @{bot_username} failed: {e}")
@@ -194,9 +240,9 @@ async def download_from_multiple_bots(url: str) -> str:
     request_id = str(uuid.uuid4())[:8]
     logger.info(f"[{request_id}] Starting parallel download from {len(DOWNLOAD_BOTS)} bots")
 
-    # Запускаем скачивание через все боты параллельно
+    # Создаём Task объекты (не корутины!)
     tasks = [
-        download_from_single_bot(client, bot_config, url, request_id)
+        asyncio.create_task(download_from_single_bot(client, bot_config, url, request_id))
         for bot_config in DOWNLOAD_BOTS
     ]
 
