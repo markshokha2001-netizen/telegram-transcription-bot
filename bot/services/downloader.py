@@ -13,14 +13,15 @@ class Downloader:
 
     async def download_audio_from_url_youtube(self, url: str) -> Optional[str]:
         """
-        Скачивает аудио с YouTube через Telethon + @DiggerDigitalBot.
+        Скачивает аудио с YouTube через несколько ботов параллельно.
+        Использует первого бота, который успешно вернёт аудио.
         Возвращает путь к файлу или None при ошибке.
         """
         try:
-            from bot.services.youtube_telethon import download_from_youtube
+            from bot.services.multi_bot_downloader import download_from_multiple_bots
 
-            # Используем встроенный Telethon модуль
-            file_path = await download_from_youtube(url)
+            # Используем параллельную загрузку через несколько ботов
+            file_path = await download_from_multiple_bots(url)
             return file_path
 
         except Exception as e:
