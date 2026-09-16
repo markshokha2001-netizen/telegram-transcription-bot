@@ -18,30 +18,13 @@ API_ID = int(os.getenv("TELEGRAM_API_ID", "38923554"))
 API_HASH = os.getenv("TELEGRAM_API_HASH", "bd666a5f2fc702fed3e7c32bc411a696")
 PHONE = os.getenv("TELEGRAM_PHONE", "+79113583410")
 
-# Список ботов для скачивания (будем пробовать параллельно)
+# Список ботов для скачивания
 DOWNLOAD_BOTS = [
     {
         "username": "SaveTubeMediaBot",
         "button_sequence": [
-            {"text": ["Скачать аудио", "Audio"], "wait_after": 5}  # Одна кнопка
+            {"text": ["Скачать аудио", "Audio"], "wait_after": 8}  # Увеличили ожидание
         ],
-    },
-    {
-        "username": "SaveFromVkBot",
-        "button_sequence": [
-            {"text": ["Audio", "Аудио"], "wait_after": 5}  # Одна кнопка
-        ],
-    },
-    {
-        "username": "skachaesh_bot",
-        "button_sequence": [
-            {"text": ["m4a"], "wait_after": 3},  # Сначала формат
-            {"text": ["Original", "Русский"], "wait_after": 5}  # Потом язык
-        ],
-    },
-    {
-        "username": "DiggerDigitalBot",
-        "button_sequence": None,  # Не требует кнопок, сразу отправляет аудио
     }
 ]
 
@@ -121,11 +104,25 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
                         filename = f"youtube_{request_id}.mp3"
                         download_path = DOWNLOAD_DIR / filename
 
-                        await message.download_media(str(download_path))
-                        size_mb = download_path.stat().st_size / 1024 / 1024
-                        logger.info(f"[{request_id}] ✅ Downloaded from @{bot_username}: {size_mb:.2f} MB")
+                        try:
+                            await message.download_media(str(download_path))
 
-                        return (True, str(download_path), None)
+                            # Проверяем, что файл не пустой
+                            if not download_path.exists() or download_path.stat().st_size < 1000:
+                                raise RuntimeError("Downloaded file is too small or missing")
+
+                            size_mb = download_path.stat().st_size / 1024 / 1024
+                            logger.info(f"[{request_id}] ✅ Downloaded from @{bot_username}: {size_mb:.2f} MB")
+
+                            # Даём дополнительное время на завершение записи файла
+                            await asyncio.sleep(2)
+
+                            return (True, str(download_path), None)
+                        except Exception as e:
+                            logger.error(f"[{request_id}] Download error: {e}")
+                            if download_path.exists():
+                                download_path.unlink()
+                            continue
 
             raise RuntimeError(f"@{bot_username}: No audio received")
 
@@ -156,11 +153,25 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
                         filename = f"youtube_{request_id}.mp3"
                         download_path = DOWNLOAD_DIR / filename
 
-                        await message.download_media(str(download_path))
-                        size_mb = download_path.stat().st_size / 1024 / 1024
-                        logger.info(f"[{request_id}] ✅ Downloaded from @{bot_username}: {size_mb:.2f} MB")
+                        try:
+                            await message.download_media(str(download_path))
 
-                        return (True, str(download_path), None)
+                            # Проверяем, что файл не пустой
+                            if not download_path.exists() or download_path.stat().st_size < 1000:
+                                raise RuntimeError("Downloaded file is too small or missing")
+
+                            size_mb = download_path.stat().st_size / 1024 / 1024
+                            logger.info(f"[{request_id}] ✅ Downloaded from @{bot_username}: {size_mb:.2f} MB")
+
+                            # Даём дополнительное время на завершение записи файла
+                            await asyncio.sleep(2)
+
+                            return (True, str(download_path), None)
+                        except Exception as e:
+                            logger.error(f"[{request_id}] Download error: {e}")
+                            if download_path.exists():
+                                download_path.unlink()
+                            continue
 
                     # Ищем кнопку
                     if message.buttons:
@@ -170,16 +181,26 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
 
                                 # Проверяем, содержит ли кнопка нужный текст
                                 if any(keyword.lower() in button_text for keyword in button_step["text"]):
-                                    logger.info(f"[{request_id}] @{bot_username} clicking button: {button.text}")
+                                    logger.info(f"[{request_id}] @{bot_username} found button: {button.text}")
 
                                     # Нажимаем кнопку
-                                    await message.click(data=button.data)
-                                    current_message_id = message.id
-                                    found_button = True
+                                    try:
+                                        # Используем правильный метод для inline-кнопок
+                                        if button.data:
+                                            await message.click(data=button.data)
+                                        else:
+                                            await button.click()
 
-                                    # Ждём после нажатия
-                                    await asyncio.sleep(button_step["wait_after"])
-                                    break
+                                        logger.info(f"[{request_id}] @{bot_username} clicked button successfully")
+                                        current_message_id = message.id
+                                        found_button = True
+
+                                        # Ждём после нажатия
+                                        await asyncio.sleep(button_step["wait_after"])
+                                        break
+                                    except Exception as e:
+                                        logger.error(f"[{request_id}] Failed to click button: {e}")
+                                        raise
                             if found_button:
                                 break
                         if found_button:
@@ -209,11 +230,26 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
                     filename = f"youtube_{request_id}.mp3"
                     download_path = DOWNLOAD_DIR / filename
 
-                    await message.download_media(str(download_path))
-                    size_mb = download_path.stat().st_size / 1024 / 1024
-                    logger.info(f"[{request_id}] ✅ Downloaded from @{bot_username}: {size_mb:.2f} MB")
+                    # Скачиваем с повторной попыткой
+                    try:
+                        await message.download_media(str(download_path))
 
-                    return (True, str(download_path), None)
+                        # Проверяем, что файл не пустой
+                        if not download_path.exists() or download_path.stat().st_size < 1000:
+                            raise RuntimeError("Downloaded file is too small or missing")
+
+                        size_mb = download_path.stat().st_size / 1024 / 1024
+                        logger.info(f"[{request_id}] ✅ Downloaded from @{bot_username}: {size_mb:.2f} MB")
+
+                        # Даём дополнительное время на завершение записи файла
+                        await asyncio.sleep(2)
+
+                        return (True, str(download_path), None)
+                    except Exception as e:
+                        logger.error(f"[{request_id}] Download error: {e}")
+                        if download_path.exists():
+                            download_path.unlink()
+                        continue
 
         raise RuntimeError(f"@{bot_username}: No audio after buttons")
 
