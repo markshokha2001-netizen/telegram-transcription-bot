@@ -4,7 +4,9 @@ from aiogram import Router, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from bot.services.downloader import Downloader
 from bot.services.groq_transcriber import GroqTranscriber
+from bot.services.progress_bar import ProgressBar
 from bot.handlers.media import transcripts, audio_files, file_names
+import asyncio
 
 router = Router()
 downloader = Downloader()
@@ -37,61 +39,75 @@ async def handle_link(message: Message):
     if current_mode == "download_youtube":
         return  # Пусть обработает downloads.py
 
-    status_msg = await message.answer("Принял, обрабатываю...")
+    # Создаём прогресс-бар
+    progress = ProgressBar(message)
+    task_completed = False
+
+    async def process():
+        nonlocal task_completed
+        try:
+            print(f"[YouTube] Начинаем скачивание через @DiggerDigitalBot: {message.text}")
+
+            # Используем Telethon + @DiggerDigitalBot для скачивания
+            audio_path = await downloader.download_audio_from_url_youtube(message.text)
+
+            if not audio_path:
+                raise RuntimeError("Не удалось скачать аудио")
+
+            print(f"[YouTube] Аудио скачано: {audio_path}")
+
+            # Проверяем размер и сжимаем если нужно
+            print(f"[YouTube] ПЕРЕД сжатием: {audio_path}")
+
+            from bot.services.audio_converter import compress_audio_if_needed
+
+            try:
+                audio_path = await compress_audio_if_needed(audio_path)
+                print(f"[YouTube] ✅ ПОСЛЕ сжатия: {audio_path}")
+            except Exception as compress_error:
+                print(f"[YouTube] ❌ ОШИБКА сжатия: {compress_error}")
+                import traceback
+                traceback.print_exc()
+
+            print(f"[YouTube] Финальный файл для транскрибации: {audio_path}")
+
+            audio_files[message.message_id] = audio_path
+
+            print(f"[YouTube] Начинаем транскрибацию: {audio_path}")
+
+            transcript = await transcriber.transcribe_verbatim(audio_path)
+
+            print(f"[YouTube] Транскрибация завершена, длина текста: {len(transcript)}")
+            transcripts[message.message_id] = transcript
+
+            # Сохраняем имя файла для экспорта
+            video_id = match.group(5)
+            file_names[message.message_id] = f"youtube_{video_id}"
+
+            # Импортируем функцию создания клавиатуры
+            from bot.handlers.media import get_export_keyboard
+            keyboard = get_export_keyboard(message.message_id)
+
+            task_completed = True
+            return (transcript, keyboard, audio_path)
+        except Exception as e:
+            task_completed = True
+            raise e
 
     try:
-        print(f"[YouTube] Начинаем скачивание через @DiggerDigitalBot: {message.text}")
-        await status_msg.edit_text("⬇️ Скачиваю аудио с YouTube через @DiggerDigitalBot...")
+        # Запускаем прогресс-бар
+        progress_task = asyncio.create_task(progress.start(completion_check=lambda: task_completed))
 
-        # Используем Telethon + @DiggerDigitalBot для скачивания
-        audio_path = await downloader.download_audio_from_url_youtube(message.text)
+        # Выполняем задачу
+        transcript, keyboard, audio_path = await process()
 
-        if not audio_path:
-            raise RuntimeError("Не удалось скачать аудио")
+        # Завершаем прогресс-бар
+        await progress.complete()
 
-        print(f"[YouTube] Аудио скачано: {audio_path}")
-
-        # Проверяем размер и сжимаем если нужно (для Groq API лимит 25 МБ)
-        await status_msg.edit_text("🔄 Проверяю размер файла...")
-        print(f"[YouTube] ПЕРЕД сжатием: {audio_path}")
-
-        from bot.services.audio_converter import compress_audio_if_needed
-
-        try:
-            audio_path = await compress_audio_if_needed(audio_path)
-            print(f"[YouTube] ✅ ПОСЛЕ сжатия: {audio_path}")
-        except Exception as compress_error:
-            print(f"[YouTube] ❌ ОШИБКА сжатия: {compress_error}")
-            import traceback
-            traceback.print_exc()
-            # Продолжаем с оригинальным файлом (хотя Groq откажет, но увидим ошибку)
-
-        print(f"[YouTube] Финальный файл для транскрибации: {audio_path}")
-
-        audio_files[message.message_id] = audio_path
-
-        await status_msg.edit_text("🎤 Транскрибирую...")
-        print(f"[YouTube] Начинаем транскрибацию: {audio_path}")
-
-        transcript = await transcriber.transcribe_verbatim(audio_path)
-
-        print(f"[YouTube] Транскрибация завершена, длина текста: {len(transcript)}")
-        transcripts[message.message_id] = transcript
-
-        # Сохраняем имя файла для экспорта (используем ID видео из URL)
-        video_id = match.group(5)  # ID видео из regex
-        file_names[message.message_id] = f"youtube_{video_id}"
-
-        # Импортируем функцию создания клавиатуры
-        from bot.handlers.media import get_export_keyboard
-        keyboard = get_export_keyboard(message.message_id)
-
-        # Telegram лимит: 4096 символов на сообщение
-        # Если текст длиннее, разбиваем на части
-        MAX_MESSAGE_LENGTH = 4000  # Оставляем запас для заголовка
+        # Отправляем результат
+        MAX_MESSAGE_LENGTH = 4000
 
         if len(transcript) <= MAX_MESSAGE_LENGTH:
-            # Короткий текст — отправляем одним сообщением с кнопками
             await message.answer(f"📝 Дословно:\n\n{transcript}", reply_markup=keyboard)
         else:
             # Длинный текст — разбиваем на части
@@ -103,11 +119,9 @@ async def handle_link(message: Message):
                 remaining = remaining[MAX_MESSAGE_LENGTH:]
                 parts.append(chunk)
 
-            # Отправляем все части текста
             for i, part in enumerate(parts, 1):
                 await message.answer(f"📝 Дословно (часть {i}/{len(parts)}):\n\n{part}")
 
-            # Последнее сообщение с кнопками (без текста, чтобы кнопки были видны)
             await message.answer(
                 f"✅ Транскрибация завершена ({len(parts)} частей, {len(transcript)} символов)\n\n"
                 f"Используйте кнопки ниже для экспорта или создания конспекта:",
@@ -117,9 +131,13 @@ async def handle_link(message: Message):
             print(f"[YouTube] Текст разбит на {len(parts)} частей")
 
     except Exception as e:
+        await progress.complete()
         print(f"[YouTube] Ошибка: {str(e)}")
         import traceback
         traceback.print_exc()
         await message.answer(f"❌ Ошибка при скачивании или обработке: {str(e)}")
         if 'audio_path' in locals() and audio_path:
             downloader.cleanup(audio_path)
+    finally:
+        if 'progress_task' in locals() and not progress_task.done():
+            progress_task.cancel()

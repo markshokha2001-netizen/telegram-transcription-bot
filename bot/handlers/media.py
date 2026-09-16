@@ -140,63 +140,72 @@ async def handle_audio(message: Message):
     # Определяем метод скачивания
     use_telethon = message.audio.file_size and message.audio.file_size > MAX_FILE_SIZE_BOT_API
 
-    status_msg = await message.answer(
-        f"Принял, обрабатываю...\n"
-        f"Размер: {file_size_mb:.1f} МБ, длительность: {duration//60}:{duration%60:02d}\n"
-        f"{'🔄 Большой файл — использую Telethon Client API (без лимитов)' if use_telethon else '⏳ Скачиваю через Bot API...'}"
-    )
+    # Создаём прогресс-бар
+    progress = ProgressBar(message)
+    task_completed = False
+
+    async def process():
+        nonlocal task_completed
+        try:
+            file_extension = Path(message.audio.file_name or "audio.mp3").suffix
+            os.makedirs("downloads", exist_ok=True)
+
+            if use_telethon:
+                # Большой файл — скачиваем через Telethon
+                logger.info(f"Audio file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — using Telethon")
+
+                bot_info = await message.bot.get_me()
+                bot_username = bot_info.username
+
+                file_path = await download_large_file_direct(
+                    bot_username=bot_username,
+                    message=message,
+                    file_extension=file_extension.lstrip('.'),
+                    file_size_mb=file_size_mb
+                )
+            else:
+                # Обычный файл — скачиваем через Bot API
+                file = await message.bot.get_file(message.audio.file_id)
+                file_path = f"downloads/{message.audio.file_id}{file_extension}"
+                await message.bot.download_file(file.file_path, file_path)
+
+            transcript = await transcriber.transcribe_verbatim(file_path)
+
+            transcripts[message.message_id] = transcript
+            original_name = Path(message.audio.file_name or "audio").stem
+            file_names[message.message_id] = original_name
+
+            keyboard = get_export_keyboard(message.message_id)
+
+            task_completed = True
+            return (transcript, keyboard, file_path)
+        except Exception as e:
+            task_completed = True
+            raise e
 
     try:
-        file_extension = Path(message.audio.file_name or "audio.mp3").suffix
-        os.makedirs("downloads", exist_ok=True)
+        # Запускаем прогресс-бар
+        progress_task = asyncio.create_task(progress.start(completion_check=lambda: task_completed))
 
-        if use_telethon:
-            # Большой файл — скачиваем через Telethon (без лимитов!)
-            logger.info(f"Audio file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — using Telethon")
-            await status_msg.edit_text(
-                f"Файл большой ({file_size_mb:.1f} МБ)\n"
-                f"📥 Скачиваю через Telethon Client API (без лимитов)..."
-            )
+        # Выполняем задачу
+        transcript, keyboard, file_path = await process()
 
-            # Получаем username бота
-            bot_info = await message.bot.get_me()
-            bot_username = bot_info.username
+        # Завершаем прогресс-бар
+        await progress.complete()
 
-            file_path = await download_large_file_direct(
-                bot_username=bot_username,
-                message=message,
-                file_extension=file_extension.lstrip('.'),
-                file_size_mb=file_size_mb
-            )
-        else:
-            # Обычный файл — скачиваем через Bot API
-            file = await message.bot.get_file(message.audio.file_id)
-            file_path = f"downloads/{message.audio.file_id}{file_extension}"
-            await message.bot.download_file(file.file_path, file_path)
-
-        await status_msg.edit_text(
-            f"Файл скачан ({file_size_mb:.1f} МБ)\n"
-            f"🎤 Транскрибирую... это займёт время для больших файлов"
-        )
-
-        transcript = await transcriber.transcribe_verbatim(file_path)
-
-        transcripts[message.message_id] = transcript
-        # Сохраняем имя файла без расширения
-        original_name = Path(message.audio.file_name or "audio").stem
-        file_names[message.message_id] = original_name
-
-        keyboard = get_export_keyboard(message.message_id)
-
+        # Отправляем результат
         await send_long_transcript(message, transcript, keyboard)
-
         downloader.cleanup(file_path)
 
     except Exception as e:
+        await progress.complete()
         import traceback
         error_detail = traceback.format_exc()
         print(f"Ошибка обработки аудио: {error_detail}")
-        await message.answer(f"❌ Ошибка при обработке: {str(e)}\n\nЕсли файл большой, попробуйте включить USE_GROQ=true для быстрой транскрибации.")
+        await message.answer(f"❌ Ошибка при обработке: {str(e)}")
+    finally:
+        if 'progress_task' in locals() and not progress_task.done():
+            progress_task.cancel()
 
 
 @router.message(F.video)
@@ -208,83 +217,84 @@ async def handle_video(message: Message):
     # Определяем метод скачивания
     use_telethon = message.video.file_size and message.video.file_size > MAX_FILE_SIZE_BOT_API
 
-    status_msg = await message.answer(
-        f"Принял, обрабатываю...\n"
-        f"Размер: {file_size_mb:.1f} МБ, длительность: {duration//60}:{duration%60:02d}\n"
-        f"{'🔄 Большой файл — использую Telethon Client API (без лимитов)' if use_telethon else '⏳ Скачиваю через Bot API...'}"
-    )
+    # Создаём прогресс-бар
+    progress = ProgressBar(message)
+    task_completed = False
+
+    async def process():
+        nonlocal task_completed
+        try:
+            os.makedirs("downloads", exist_ok=True)
+
+            if use_telethon:
+                logger.info(f"Video file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — using Telethon")
+                bot_info = await message.bot.get_me()
+                bot_username = bot_info.username
+
+                video_path = await download_large_file_direct(
+                    bot_username=bot_username,
+                    message=message,
+                    file_extension='mp4',
+                    file_size_mb=file_size_mb
+                )
+            else:
+                file = await message.bot.get_file(message.video.file_id)
+                video_path = f"downloads/{message.video.file_id}.mp4"
+                await message.bot.download_file(file.file_path, video_path)
+
+            audio_path = await downloader.extract_audio_from_video(video_path)
+
+            if not audio_path:
+                raise RuntimeError("Не удалось извлечь аудио из видео")
+
+            audio_files[message.message_id] = audio_path
+
+            transcript = await transcriber.transcribe_verbatim(audio_path)
+
+            transcripts[message.message_id] = transcript
+            original_name = Path(message.video.file_name or "video").stem if message.video.file_name else "video"
+            file_names[message.message_id] = original_name
+
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="📄 TXT", callback_data=f"export_txt_{message.message_id}"),
+                    InlineKeyboardButton(text="📘 DOCX", callback_data=f"export_docx_{message.message_id}"),
+                    InlineKeyboardButton(text="📕 PDF", callback_data=f"export_pdf_{message.message_id}")
+                ],
+                [
+                    InlineKeyboardButton(text="🤖 Сделать конспект", callback_data=f"summary_{message.message_id}")
+                ],
+                [
+                    InlineKeyboardButton(text="🎵 Прислать аудио отдельно", callback_data=f"audio_{message.message_id}")
+                ]
+            ])
+
+            task_completed = True
+            return (transcript, keyboard, video_path)
+        except Exception as e:
+            task_completed = True
+            raise e
 
     try:
-        os.makedirs("downloads", exist_ok=True)
+        # Запускаем прогресс-бар
+        progress_task = asyncio.create_task(progress.start(completion_check=lambda: task_completed))
 
-        if use_telethon:
-            # Большой файл — скачиваем через Telethon (без лимитов!)
-            logger.info(f"Video file is {file_size_mb:.1f} MB (>{MAX_FILE_SIZE_BOT_API/1024/1024:.0f} MB) — using Telethon")
-            await status_msg.edit_text(
-                f"Файл большой ({file_size_mb:.1f} МБ)\n"
-                f"📥 Скачиваю через Telethon Client API (без лимитов)..."
-            )
+        # Выполняем задачу
+        transcript, keyboard, video_path = await process()
 
-            # Получаем username бота
-            bot_info = await message.bot.get_me()
-            bot_username = bot_info.username
+        # Завершаем прогресс-бар
+        await progress.complete()
 
-            video_path = await download_large_file_direct(
-                bot_username=bot_username,
-                message=message,
-                file_extension='mp4',
-                file_size_mb=file_size_mb
-            )
-        else:
-            # Обычный файл — скачиваем через Bot API
-            file = await message.bot.get_file(message.video.file_id)
-            video_path = f"downloads/{message.video.file_id}.mp4"
-            await message.bot.download_file(file.file_path, video_path)
-
-        await status_msg.edit_text(
-            f"Видео скачано ({file_size_mb:.1f} МБ)\n"
-            f"🎵 Извлекаю аудио..."
-        )
-
-        audio_path = await downloader.extract_audio_from_video(video_path)
-
-        if not audio_path:
-            raise RuntimeError("Не удалось извлечь аудио из видео")
-
-        audio_files[message.message_id] = audio_path
-
-        await status_msg.edit_text(
-            f"Аудио извлечено\n"
-            f"🎤 Транскрибирую... это займёт время для больших файлов"
-        )
-
-        transcript = await transcriber.transcribe_verbatim(audio_path)
-
-        transcripts[message.message_id] = transcript
-        # Сохраняем имя видеофайла без расширения
-        original_name = Path(message.video.file_name or "video").stem if message.video.file_name else "video"
-        file_names[message.message_id] = original_name
-
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📄 TXT", callback_data=f"export_txt_{message.message_id}"),
-                InlineKeyboardButton(text="📘 DOCX", callback_data=f"export_docx_{message.message_id}"),
-                InlineKeyboardButton(text="📕 PDF", callback_data=f"export_pdf_{message.message_id}")
-            ],
-            [
-                InlineKeyboardButton(text="🤖 Сделать конспект", callback_data=f"summary_{message.message_id}")
-            ],
-            [
-                InlineKeyboardButton(text="🎵 Прислать аудио отдельно", callback_data=f"audio_{message.message_id}")
-            ]
-        ])
-
+        # Отправляем результат
         await send_long_transcript(message, transcript, keyboard)
-
         downloader.cleanup(video_path)
 
     except Exception as e:
+        await progress.complete()
         import traceback
         error_detail = traceback.format_exc()
         print(f"Ошибка обработки видео: {error_detail}")
-        await message.answer(f"❌ Ошибка при обработке: {str(e)}\n\nЕсли файл большой, попробуйте включить USE_GROQ=true для быстрой транскрибации.")
+        await message.answer(f"❌ Ошибка при обработке: {str(e)}")
+    finally:
+        if 'progress_task' in locals() and not progress_task.done():
+            progress_task.cancel()
