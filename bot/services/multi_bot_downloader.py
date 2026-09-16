@@ -74,13 +74,15 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
     try:
         logger.info(f"[{request_id}] Trying @{bot_username}...")
 
+        # Запоминаем ID последнего сообщения ПЕРЕД отправкой
+        messages_before = await client.get_messages(bot_username, limit=1)
+        last_message_id = messages_before[0].id if messages_before else 0
+
+        logger.info(f"[{request_id}] Last message ID before sending: {last_message_id}")
+
         # Отправляем ссылку боту
         await client.send_message(bot_username, url)
         logger.info(f"[{request_id}] Sent URL to @{bot_username}")
-
-        # Запоминаем ID последнего сообщения
-        messages_before = await client.get_messages(bot_username, limit=1)
-        last_message_id = messages_before[0].id if messages_before else 0
 
         # Если бот не требует кнопок (DiggerDigitalBot)
         if bot_config["button_sequence"] is None:
@@ -94,7 +96,10 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
                 await asyncio.sleep(check_interval)
                 elapsed += check_interval
 
-                async for message in client.iter_messages(bot_username, limit=5):
+                # Получаем свежие сообщения
+                new_messages = await client.get_messages(bot_username, limit=10)
+
+                for message in new_messages:
                     if message.id <= last_message_id:
                         continue
 
@@ -144,9 +149,12 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
 
                 logger.info(f"[{request_id}] @{bot_username} checking messages (elapsed: {elapsed}s)...")
 
-                async for message in client.iter_messages(bot_username, limit=5):
+                # Получаем свежие сообщения
+                new_messages = await client.get_messages(bot_username, limit=10)
+
+                for message in new_messages:
                     if message.id <= current_message_id:
-                        logger.debug(f"[{request_id}] Skipping old message {message.id}")
+                        logger.debug(f"[{request_id}] Skipping old message {message.id} (current_message_id={current_message_id})")
                         continue
 
                     logger.info(f"[{request_id}] New message {message.id}: text={message.text[:50] if message.text else 'None'}, has_buttons={bool(message.buttons)}")
@@ -232,7 +240,10 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
             await asyncio.sleep(check_interval)
             elapsed += check_interval
 
-            async for message in client.iter_messages(bot_username, limit=10):
+            # Получаем свежие сообщения
+            new_messages = await client.get_messages(bot_username, limit=10)
+
+            for message in new_messages:
                 if message.id <= current_message_id:
                     continue
 
