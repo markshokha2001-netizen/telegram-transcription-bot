@@ -142,9 +142,14 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
                 await asyncio.sleep(check_interval)
                 elapsed += check_interval
 
+                logger.info(f"[{request_id}] @{bot_username} checking messages (elapsed: {elapsed}s)...")
+
                 async for message in client.iter_messages(bot_username, limit=5):
                     if message.id <= current_message_id:
+                        logger.debug(f"[{request_id}] Skipping old message {message.id}")
                         continue
+
+                    logger.info(f"[{request_id}] New message {message.id}: text={message.text[:50] if message.text else 'None'}, has_buttons={bool(message.buttons)}")
 
                     # Проверяем, может это уже аудио (некоторые боты сразу отправляют)
                     if message.audio or (message.document and message.document.mime_type and 'audio' in message.document.mime_type):
@@ -175,23 +180,28 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
 
                     # Ищем кнопку
                     if message.buttons:
-                        for row in message.buttons:
+                        logger.info(f"[{request_id}] Found message with buttons, checking {len(message.buttons)} rows")
+                        for row_idx, row in enumerate(message.buttons):
+                            logger.info(f"[{request_id}] Row {row_idx}: {[btn.text for btn in row]}")
                             for button in row:
                                 button_text = button.text.lower()
+                                logger.info(f"[{request_id}] Checking button '{button.text}' against keywords {button_step['text']}")
 
                                 # Проверяем, содержит ли кнопка нужный текст
                                 if any(keyword.lower() in button_text for keyword in button_step["text"]):
-                                    logger.info(f"[{request_id}] @{bot_username} found button: {button.text}")
+                                    logger.info(f"[{request_id}] ✅ @{bot_username} MATCHED button: {button.text}")
 
                                     # Нажимаем кнопку
                                     try:
                                         # Используем правильный метод для inline-кнопок
                                         if button.data:
+                                            logger.info(f"[{request_id}] Clicking with data: {button.data}")
                                             await message.click(data=button.data)
                                         else:
+                                            logger.info(f"[{request_id}] Clicking button directly")
                                             await button.click()
 
-                                        logger.info(f"[{request_id}] @{bot_username} clicked button successfully")
+                                        logger.info(f"[{request_id}] ✅ @{bot_username} clicked button successfully, waiting {button_step['wait_after']}s")
                                         current_message_id = message.id
                                         found_button = True
 
@@ -199,12 +209,14 @@ async def download_from_single_bot(client, bot_config: dict, url: str, request_i
                                         await asyncio.sleep(button_step["wait_after"])
                                         break
                                     except Exception as e:
-                                        logger.error(f"[{request_id}] Failed to click button: {e}")
+                                        logger.error(f"[{request_id}] ❌ Failed to click button: {e}", exc_info=True)
                                         raise
                             if found_button:
                                 break
                         if found_button:
                             break
+                    else:
+                        logger.info(f"[{request_id}] Message {message.id} has no buttons")
 
             if not found_button:
                 raise RuntimeError(f"@{bot_username}: Button not found at step {step_num}")
